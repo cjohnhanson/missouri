@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -13,6 +14,29 @@ fn fixture(name: &str) -> String {
 
 fn tmpdir() -> tempfile::TempDir {
     tempfile::tempdir().unwrap()
+}
+
+/// Copy a fixture to a temp directory (for tests that write into the fixture).
+fn copy_fixture_to_tmp(fixture_name: &str) -> tempfile::TempDir {
+    let tmp = tmpdir();
+    let fixture_path = fixture(fixture_name);
+    let src = Path::new(&fixture_path);
+    copy_dir_recursive(src, tmp.path());
+    tmp
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) {
+    fs::create_dir_all(dst).unwrap();
+    for entry in fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir_recursive(&src_path, &dst_path);
+        } else {
+            fs::copy(&src_path, &dst_path).unwrap();
+        }
+    }
 }
 
 // --- -C flag (change directory) ---
@@ -459,4 +483,384 @@ fn state_add_from_nonexistent_fails() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("not found"));
+}
+
+// --- 15: Fail mid-path ---
+
+#[test]
+fn fail_mid_path_run_fails() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("15-fail-mid-path"))
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("FAIL"))
+        .stdout(predicate::str::contains("step one"))
+        .stdout(predicate::str::contains("step two fails"));
+}
+
+// --- Recording ---
+
+#[test]
+fn record_produces_output_directory() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("clitest")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    assert!(tmp.path().join(".missouri/runs/clitest").is_dir());
+    assert!(tmp
+        .path()
+        .join(".missouri/runs/clitest/results.json")
+        .is_file());
+    assert!(tmp
+        .path()
+        .join(".missouri/runs/clitest/path-0/step-0.cast")
+        .is_file());
+}
+
+#[test]
+fn record_cast_files_per_step() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("clitest")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    let runs_dir = tmp.path().join(".missouri/runs/clitest");
+    // 03-branching has 2 paths, each with 1 step = 2 .cast files total
+    assert!(runs_dir.join("path-0/step-0.cast").is_file());
+    assert!(runs_dir.join("path-1/step-0.cast").is_file());
+    // No step-1 in either path
+    assert!(!runs_dir.join("path-0/step-1.cast").exists());
+    assert!(!runs_dir.join("path-1/step-1.cast").exists());
+}
+
+#[test]
+fn record_does_not_break_pass_fail() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS"))
+        .stdout(predicate::str::contains("2 passed"));
+}
+
+#[test]
+fn record_with_failing_fixture() {
+    let tmp = copy_fixture_to_tmp("15-fail-mid-path");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("clitest")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .failure();
+
+    let runs_dir = tmp.path().join(".missouri/runs/clitest");
+    assert!(runs_dir.join("results.json").is_file());
+    // Step 0 ran and succeeded
+    assert!(runs_dir.join("path-0/step-0.cast").is_file());
+    // Step 1 ran and failed (but output was still captured)
+    assert!(runs_dir.join("path-0/step-1.cast").is_file());
+    // Step 2 never ran
+    assert!(!runs_dir.join("path-0/step-2.cast").exists());
+}
+
+#[test]
+fn record_run_id_flag() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("my-custom-id")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    assert!(tmp.path().join(".missouri/runs/my-custom-id").is_dir());
+}
+
+#[test]
+fn record_default_run_id_is_timestamp() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    let runs_dir = tmp.path().join(".missouri/runs");
+    assert!(runs_dir.is_dir());
+    let entries: Vec<_> = fs::read_dir(&runs_dir).unwrap().collect();
+    assert_eq!(entries.len(), 1);
+    let dirname = entries[0].as_ref().unwrap().file_name();
+    let dirname = dirname.to_str().unwrap();
+    // Should look like 2026-02-22T17-30-00
+    assert!(
+        dirname.len() >= 19,
+        "expected timestamp-like dirname, got: {dirname}"
+    );
+    assert!(
+        dirname.contains('T'),
+        "expected timestamp-like dirname, got: {dirname}"
+    );
+}
+
+#[test]
+fn record_conflicts_with_check_only() {
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--check-only")
+        .arg("-d")
+        .arg(fixture("03-branching"))
+        .assert()
+        .failure();
+}
+
+#[test]
+fn record_works_with_no_check() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--no-check")
+        .arg("--run-id")
+        .arg("clitest")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    assert!(tmp
+        .path()
+        .join(".missouri/runs/clitest/path-0/step-0.cast")
+        .is_file());
+}
+
+// --- Reporting ---
+
+#[test]
+fn report_terminal_default() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    // Setup: record a run
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("r1")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    // Report
+    missouri()
+        .arg("report")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("passed"))
+        .stdout(predicate::str::contains("root"));
+}
+
+#[test]
+fn report_html_generates_file() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("r1")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    missouri()
+        .arg("report")
+        .arg("--format")
+        .arg("html")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    // Find the generated HTML file
+    let report_path = tmp.path().join(".missouri/runs/r1/report.html");
+    assert!(report_path.is_file(), "HTML report should be generated");
+    let html = fs::read_to_string(&report_path).unwrap();
+    assert!(html.contains("<!DOCTYPE html>"));
+    assert!(html.contains("<pre><code>"));
+    assert!(html.contains("PASS") || html.contains("FAIL"));
+}
+
+#[test]
+fn report_html_is_self_contained() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("r1")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    missouri()
+        .arg("report")
+        .arg("--format")
+        .arg("html")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(tmp.path().join(".missouri/runs/r1/report.html")).unwrap();
+    assert!(html.contains("<pre><code>"));
+    // No external resources
+    assert!(!html.contains("<script src="));
+    assert!(!html.contains("<link href="));
+}
+
+#[test]
+fn report_md_generates_file() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("r1")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    missouri()
+        .arg("report")
+        .arg("--format")
+        .arg("md")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    let report_path = tmp.path().join(".missouri/runs/r1/report.md");
+    assert!(report_path.is_file(), "Markdown report should be generated");
+    let md = fs::read_to_string(&report_path).unwrap();
+    assert!(md.contains("```"));
+    assert!(md.contains("root"));
+}
+
+#[test]
+fn report_specific_run() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("run-a")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    missouri()
+        .arg("run")
+        .arg("--record")
+        .arg("--run-id")
+        .arg("run-b")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    missouri()
+        .arg("report")
+        .arg("--run")
+        .arg("run-a")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("run-a"));
+}
+
+#[test]
+fn report_no_runs_errors() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("report")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no recorded runs"));
+}
+
+// --- Serving ---
+
+#[test]
+fn serve_no_runs_errors() {
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri()
+        .arg("serve")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no recorded runs"));
 }

@@ -1,0 +1,4 @@
+transitions:
+  - name: "step three"
+    command: "echo 'after step three' > data.txt"
+    target: "../state-d"

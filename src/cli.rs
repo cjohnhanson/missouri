@@ -37,6 +37,12 @@ pub enum Command {
 
     /// Manage states
     State(StateArgs),
+
+    /// Generate a report from recorded runs
+    Report(ReportArgs),
+
+    /// Serve an HTML report locally
+    Serve(ServeArgs),
 }
 
 #[derive(Parser)]
@@ -58,12 +64,20 @@ pub struct RunArgs {
     pub keep_temp: bool,
 
     /// Run only state assertions (skip transitions and filesystem comparison)
-    #[arg(long, conflicts_with = "no_check")]
+    #[arg(long, conflicts_with_all = ["no_check", "record"])]
     pub check_only: bool,
 
     /// Skip all assertions (run only transitions and filesystem comparison)
     #[arg(long, conflicts_with = "check_only")]
     pub no_check: bool,
+
+    /// Record transition output to asciicast files
+    #[arg(long, conflicts_with = "check_only")]
+    pub record: bool,
+
+    /// Custom run ID for recording output directory (default: timestamp)
+    #[arg(long, requires = "record")]
+    pub run_id: Option<String>,
 }
 
 #[derive(Parser)]
@@ -123,4 +137,41 @@ pub struct StateAddArgs {
     /// Copy from an existing state and create a placeholder transition
     #[arg(long)]
     pub from: Option<String>,
+}
+
+#[derive(Parser)]
+pub struct ReportArgs {
+    /// Root directory containing states
+    #[arg(short, long, default_value = ".")]
+    pub dir: Utf8PathBuf,
+
+    /// Report format
+    #[arg(long, default_value = "terminal")]
+    pub format: ReportFormat,
+
+    /// Specific run ID to report on (default: latest)
+    #[arg(long)]
+    pub run: Option<String>,
+}
+
+#[derive(Clone, clap::ValueEnum)]
+pub enum ReportFormat {
+    Terminal,
+    Html,
+    Md,
+}
+
+#[derive(Parser)]
+pub struct ServeArgs {
+    /// Root directory containing states
+    #[arg(short, long, default_value = ".")]
+    pub dir: Utf8PathBuf,
+
+    /// Specific run ID to serve (default: latest)
+    #[arg(long)]
+    pub run: Option<String>,
+
+    /// Port to serve on
+    #[arg(long, default_value = "8080")]
+    pub port: u16,
 }

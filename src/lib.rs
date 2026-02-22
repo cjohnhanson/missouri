@@ -6,5 +6,6 @@ pub mod error;
 pub mod executor;
 pub mod graph;
 pub mod paths;
+pub mod recorder;
 pub mod report;
 pub mod scaffold;

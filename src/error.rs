@@ -91,6 +91,13 @@ pub enum Error {
     )]
     SourceStateNotFound { name: String },
 
+    #[error("no recorded runs found")]
+    #[diagnostic(
+        code(missouri::report::no_runs),
+        help("run `missouri run --record` first to create a recording")
+    )]
+    NoRecordedRuns,
+
     #[error(transparent)]
     #[diagnostic(code(missouri::io))]
     Io(#[from] std::io::Error),

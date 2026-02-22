@@ -1,0 +1,4 @@
+transitions:
+  - name: "step two fails"
+    command: "sh -c 'echo step two failing && exit 1'"
+    target: "../state-c"

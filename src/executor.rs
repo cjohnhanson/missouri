@@ -193,12 +193,23 @@ pub struct PathResult {
     pub passed: bool,
 }
 
+/// Configuration for recording transition output.
+#[derive(Debug, Clone)]
+pub struct RecordingConfig {
+    /// Base output directory for recordings (e.g. `<root>/<config_dir>/runs/<run_id>/`).
+    pub output_dir: Utf8PathBuf,
+    /// The run ID.
+    pub run_id: String,
+}
+
 /// Options for test execution.
 pub struct RunOptions {
     pub keep_temp: bool,
     pub verbose: bool,
     pub sandbox: Sandbox,
     pub check_mode: CheckMode,
+    /// If set, record transition output to .cast files.
+    pub recording: Option<RecordingConfig>,
 }
 
 /// Result of running a single setup command.
@@ -338,18 +349,19 @@ fn run_single_setup(
 pub fn run_all_paths(graph: &StateGraph, paths: &[TestPath], opts: &RunOptions) -> Vec<PathResult> {
     paths
         .iter()
-        .map(|path| run_path(graph, path, opts))
+        .enumerate()
+        .map(|(path_idx, path)| run_path(graph, path, opts, path_idx))
         .collect()
 }
 
 /// Execute a single test path.
-fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions) -> PathResult {
+fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions, path_idx: usize) -> PathResult {
     let path_display = path.display(graph);
 
     match opts.check_mode {
         CheckMode::CheckOnly => run_path_check_only(graph, path, path_display, opts),
         CheckMode::Full | CheckMode::NoCheck => {
-            run_path_transitions(graph, path, path_display, opts)
+            run_path_transitions(graph, path, path_display, opts, path_idx)
         }
     }
 }
@@ -451,6 +463,7 @@ fn run_path_transitions(
     path: &TestPath,
     path_display: String,
     opts: &RunOptions,
+    path_idx: usize,
 ) -> PathResult {
     let mut steps = Vec::new();
     let mut passed = true;
@@ -528,6 +541,12 @@ fn run_path_transitions(
             }
         }
 
+        // Build recording path if recording is enabled
+        let recording_path = opts.recording.as_ref().map(|rc| {
+            let path_dir = rc.output_dir.join(format!("path-{path_idx}"));
+            path_dir.join(format!("step-{step_idx}.cast"))
+        });
+
         // Execute the transition command in the sandboxed env
         let step_result = execute_transition(
             transition,
@@ -537,6 +556,7 @@ fn run_path_transitions(
             graph,
             &opts.sandbox,
             run_assertions_flag,
+            recording_path.as_ref(),
         );
 
         // Merge source assertions into the step result (first step only)
@@ -867,6 +887,7 @@ fn execute_transition(
     graph: &StateGraph,
     sandbox: &Sandbox,
     run_assertions_flag: bool,
+    recording_path: Option<&Utf8PathBuf>,
 ) -> StepResult {
     let source_name = graph.states[transition.source.0].name.clone();
     let target_name = target.name.clone();
@@ -885,20 +906,32 @@ fn execute_transition(
         .unwrap_or("/usr/local/bin:/usr/bin:/bin");
     let path_env = build_path_env(bin_dir_opt, graph.project_bin.as_deref(), base_path);
 
-    // Run the command, wrapping in flox activate when a Flox sandbox is active.
-    let output = match sandbox {
-        Sandbox::None => build_command_bare(transition, work_dir, source_env, &path_env),
-        Sandbox::Flox {
-            flox_bin,
-            project_root,
-        } => build_command_flox(
-            transition,
+    // Run the command — using recorder if recording is enabled, otherwise normal execution.
+    let output = if let Some(cast_path) = recording_path {
+        Some(crate::recorder::record_command(
+            &transition.command,
+            transition.shell,
             work_dir,
             source_env,
             &path_env,
-            flox_bin,
-            project_root,
-        ),
+            cast_path,
+            sandbox,
+        ))
+    } else {
+        match sandbox {
+            Sandbox::None => build_command_bare(transition, work_dir, source_env, &path_env),
+            Sandbox::Flox {
+                flox_bin,
+                project_root,
+            } => build_command_flox(
+                transition,
+                work_dir,
+                source_env,
+                &path_env,
+                flox_bin,
+                project_root,
+            ),
+        }
     };
 
     // Handle empty command (non-shell mode)
