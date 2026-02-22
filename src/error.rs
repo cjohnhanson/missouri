@@ -59,12 +59,37 @@ pub enum Error {
     )]
     IgnorePattern { pattern: String, detail: String },
 
-    #[error(".flox/ found at {root} but `flox` binary not found on PATH")]
+    #[error("flox sandbox configured but `flox` binary not found on PATH (project root: {root})")]
     #[diagnostic(
         code(missouri::sandbox::flox_not_found),
-        help("install flox (https://flox.dev) or remove the .flox/ directory")
+        help("install flox (https://flox.dev) or remove packages/flox config from missouri.yml")
     )]
     FloxNotFound { root: Utf8PathBuf },
+
+    #[error("flox init failed: {detail}")]
+    #[diagnostic(
+        code(missouri::sandbox::flox_init_failed),
+        help("check that flox is working correctly")
+    )]
+    FloxInitFailed { detail: String },
+
+    #[error("project already initialized at {path}")]
+    #[diagnostic(
+        code(missouri::init::already_initialized),
+        help("remove {path} to reinitialize")
+    )]
+    AlreadyInitialized { path: Utf8PathBuf },
+
+    #[error("state \"{name}\" already exists")]
+    #[diagnostic(code(missouri::state::already_exists))]
+    StateAlreadyExists { name: String },
+
+    #[error("source state \"{name}\" not found")]
+    #[diagnostic(
+        code(missouri::state::source_not_found),
+        help("the --from state must be an existing state directory")
+    )]
+    SourceStateNotFound { name: String },
 
     #[error(transparent)]
     #[diagnostic(code(missouri::io))]

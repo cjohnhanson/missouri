@@ -9,6 +9,10 @@ use clap::Parser;
     max_term_width = 98
 )]
 pub struct Args {
+    /// Change to this directory before doing anything
+    #[arg(short = 'C', global = true)]
+    pub directory: Option<Utf8PathBuf>,
+
     /// Name of the config directory (default: .missouri)
     #[arg(long, global = true, default_value = ".missouri")]
     pub config_dir: String,
@@ -27,6 +31,12 @@ pub enum Command {
 
     /// Validate missouri.yml files without running
     Validate(ValidateArgs),
+
+    /// Initialize a new missouri project
+    Init(InitArgs),
+
+    /// Manage states
+    State(StateArgs),
 }
 
 #[derive(Parser)]
@@ -80,4 +90,37 @@ pub struct ValidateArgs {
     /// Root directory containing states
     #[arg(short, long, default_value = ".")]
     pub dir: Utf8PathBuf,
+}
+
+#[derive(Parser)]
+pub struct InitArgs {
+    /// Root directory for the project
+    #[arg(short, long, default_value = ".")]
+    pub dir: Utf8PathBuf,
+}
+
+#[derive(Parser)]
+pub struct StateArgs {
+    #[command(subcommand)]
+    pub command: StateCommand,
+}
+
+#[derive(Parser)]
+pub enum StateCommand {
+    /// Add a new state
+    Add(StateAddArgs),
+}
+
+#[derive(Parser)]
+pub struct StateAddArgs {
+    /// Name of the new state
+    pub name: String,
+
+    /// Root directory containing states
+    #[arg(short, long, default_value = ".")]
+    pub dir: Utf8PathBuf,
+
+    /// Copy from an existing state and create a placeholder transition
+    #[arg(long)]
+    pub from: Option<String>,
 }

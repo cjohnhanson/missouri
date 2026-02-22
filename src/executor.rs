@@ -5,7 +5,7 @@ use tempfile::TempDir;
 
 use crate::compare::{self, ComparisonResult, OutputDiff};
 use crate::error;
-use crate::graph::{Assertion, StateGraph, StateId, Transition};
+use crate::graph::{Assertion, SandboxConfig, StateGraph, StateId, Transition};
 use crate::paths::TestPath;
 
 /// Sandbox configuration for transition execution.
@@ -22,25 +22,101 @@ pub enum Sandbox {
     },
 }
 
-/// Detect sandbox from the project root.
+/// Detect and prepare sandbox from project-level config.
 ///
-/// If `.flox/` exists at the root, resolve the `flox` binary from the current
-/// process's PATH and return `Sandbox::Flox`. Errors if `.flox/` is present
-/// but `flox` is not found.
+/// Reads `graph.sandbox_config` to determine the sandbox mode:
+/// - `SandboxConfig::None` → `Sandbox::None`
+/// - `SandboxConfig::Packages(pkgs)` → generate manifest.toml, init flox env
+/// - `SandboxConfig::Manifest(path)` → use user's manifest, init flox env
+///
+/// The managed flox environment lives in `<config_dir>/.flox/` inside the project root.
 pub fn detect_sandbox(graph: &StateGraph) -> error::Result<Sandbox> {
-    let flox_dir = graph.root.join(".flox");
+    match &graph.sandbox_config {
+        SandboxConfig::None => Ok(Sandbox::None),
+        SandboxConfig::Packages(packages) => {
+            let flox_bin = which_flox().ok_or_else(|| error::Error::FloxNotFound {
+                root: graph.root.clone(),
+            })?;
+            let flox_dir =
+                ensure_managed_flox_env(&graph.root, &graph.config_dir, &flox_bin, None, packages)?;
+            Ok(Sandbox::Flox {
+                flox_bin,
+                project_root: flox_dir,
+            })
+        }
+        SandboxConfig::Manifest(manifest_path) => {
+            let flox_bin = which_flox().ok_or_else(|| error::Error::FloxNotFound {
+                root: graph.root.clone(),
+            })?;
+            let flox_dir = ensure_managed_flox_env(
+                &graph.root,
+                &graph.config_dir,
+                &flox_bin,
+                Some(manifest_path),
+                &[],
+            )?;
+            Ok(Sandbox::Flox {
+                flox_bin,
+                project_root: flox_dir,
+            })
+        }
+    }
+}
+
+/// Generate a minimal manifest.toml from a list of package names.
+fn generate_manifest(packages: &[String]) -> String {
+    let mut manifest = String::from("version = 1\n\n[install]\n");
+    for pkg in packages {
+        manifest.push_str(&format!("{pkg}.pkg-path = \"{pkg}\"\n"));
+    }
+    manifest
+}
+
+/// Ensure the managed flox environment exists at `<root>/<config_dir>/.flox/`.
+///
+/// If `manifest_path` is Some, copies that manifest into the env.
+/// If `manifest_path` is None, generates a manifest from `packages`.
+///
+/// Returns the absolute path to the directory containing `.flox/` (the managed env root).
+fn ensure_managed_flox_env(
+    root: &Utf8Path,
+    config_dir: &str,
+    flox_bin: &Utf8Path,
+    manifest_path: Option<&Utf8Path>,
+    packages: &[String],
+) -> error::Result<Utf8PathBuf> {
+    let managed_root = root.join(config_dir);
+    let flox_dir = managed_root.join(".flox");
+    let env_dir = flox_dir.join("env");
+
     if !flox_dir.exists() {
-        return Ok(Sandbox::None);
+        // Initialize a new flox environment
+        let output = Command::new(flox_bin.as_str())
+            .args(["init", "-d", managed_root.as_str()])
+            .output()
+            .map_err(|e| error::Error::Io(e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(error::Error::FloxInitFailed {
+                detail: stderr.into_owned(),
+            });
+        }
     }
 
-    let flox_bin = which_flox().ok_or_else(|| error::Error::FloxNotFound {
-        root: graph.root.clone(),
-    })?;
+    // Write the manifest
+    let manifest_dest = env_dir.join("manifest.toml");
+    let manifest_content = if let Some(path) = manifest_path {
+        std::fs::read_to_string(path.as_std_path()).map_err(|e| error::Error::ConfigRead {
+            path: path.to_owned(),
+            source: e,
+        })?
+    } else {
+        generate_manifest(packages)
+    };
+    std::fs::write(&manifest_dest, &manifest_content).map_err(|e| error::Error::Io(e))?;
 
-    Ok(Sandbox::Flox {
-        flox_bin,
-        project_root: graph.root.clone(),
-    })
+    Ok(managed_root)
 }
 
 /// Resolve the absolute path to `flox` from the current process's PATH.
@@ -53,6 +129,23 @@ fn which_flox() -> Option<Utf8PathBuf> {
         }
     }
     std::option::Option::None
+}
+
+/// Build the PATH env var: state bin/ → project bin/ → base path.
+fn build_path_env(
+    state_bin: Option<&Utf8Path>,
+    project_bin: Option<&Utf8Path>,
+    base_path: &str,
+) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if let Some(sb) = state_bin {
+        parts.push(sb.as_str());
+    }
+    if let Some(pb) = project_bin {
+        parts.push(pb.as_str());
+    }
+    parts.push(base_path);
+    parts.join(":")
 }
 
 /// How assertions interact with the run.
@@ -106,6 +199,139 @@ pub struct RunOptions {
     pub verbose: bool,
     pub sandbox: Sandbox,
     pub check_mode: CheckMode,
+}
+
+/// Result of running a single setup command.
+#[derive(Debug)]
+pub struct SetupResult {
+    pub name: String,
+    pub passed: bool,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Run setup commands before test paths. Returns results and whether all passed.
+pub fn run_setup_phase(graph: &StateGraph, opts: &RunOptions) -> Vec<SetupResult> {
+    let base_path = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
+    let path_env = build_path_env(None, graph.project_bin.as_deref(), &base_path);
+
+    graph
+        .setup
+        .iter()
+        .scan(true, |still_passing, cmd| {
+            if !*still_passing {
+                return None; // stop after first failure
+            }
+            let result = run_single_setup(
+                cmd,
+                &graph.root,
+                &path_env,
+                &graph.project_env,
+                &opts.sandbox,
+            );
+            if !result.passed {
+                *still_passing = false;
+            }
+            Some(result)
+        })
+        .collect()
+}
+
+/// Run a single setup command.
+fn run_single_setup(
+    cmd: &crate::graph::SetupCommand,
+    work_dir: &Utf8Path,
+    path_env: &str,
+    project_env: &std::collections::BTreeMap<String, String>,
+    sandbox: &Sandbox,
+) -> SetupResult {
+    let output = if cmd.shell {
+        match sandbox {
+            Sandbox::None => Command::new("sh")
+                .arg("-c")
+                .arg(&cmd.command)
+                .current_dir(work_dir.as_std_path())
+                .env_clear()
+                .envs(project_env.iter())
+                .env("PATH", path_env)
+                .output(),
+            Sandbox::Flox {
+                flox_bin,
+                project_root,
+            } => Command::new(flox_bin.as_str())
+                .args([
+                    "activate",
+                    "-d",
+                    project_root.as_str(),
+                    "--",
+                    "sh",
+                    "-c",
+                    &cmd.command,
+                ])
+                .current_dir(work_dir.as_std_path())
+                .env_clear()
+                .envs(project_env.iter())
+                .env("PATH", path_env)
+                .env("SHELL", "/bin/sh")
+                .output(),
+        }
+    } else {
+        let parts: Vec<&str> = cmd.command.split_whitespace().collect();
+        if parts.is_empty() {
+            return SetupResult {
+                name: cmd.name.clone(),
+                passed: false,
+                exit_code: None,
+                stdout: String::new(),
+                stderr: "empty command".into(),
+            };
+        }
+        match sandbox {
+            Sandbox::None => Command::new(parts[0])
+                .args(&parts[1..])
+                .current_dir(work_dir.as_std_path())
+                .env_clear()
+                .envs(project_env.iter())
+                .env("PATH", path_env)
+                .output(),
+            Sandbox::Flox {
+                flox_bin,
+                project_root,
+            } => {
+                let mut args = vec!["activate", "-d", project_root.as_str(), "--"];
+                args.extend(parts);
+                Command::new(flox_bin.as_str())
+                    .args(&args)
+                    .current_dir(work_dir.as_std_path())
+                    .env_clear()
+                    .envs(project_env.iter())
+                    .env("PATH", path_env)
+                    .env("SHELL", "/bin/sh")
+                    .output()
+            }
+        }
+    };
+
+    match output {
+        Ok(o) => {
+            let exit_code = o.status.code();
+            SetupResult {
+                name: cmd.name.clone(),
+                passed: o.status.success(),
+                exit_code,
+                stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+            }
+        }
+        Err(e) => SetupResult {
+            name: cmd.name.clone(),
+            passed: false,
+            exit_code: None,
+            stdout: String::new(),
+            stderr: format!("failed to execute command: {e}"),
+        },
+    }
 }
 
 /// Execute all test paths and return results.
@@ -423,15 +649,16 @@ fn run_single_assertion(
 ) -> AssertionResult {
     let state = &graph.states[assertion.state.0];
     let bin_dir = state.path.join(&graph.config_dir).join("bin");
+    let bin_dir_opt = if bin_dir.exists() {
+        Some(bin_dir.as_path())
+    } else {
+        None
+    };
     let base_path = state_env
         .get("PATH")
         .map(|s| s.as_str())
         .unwrap_or("/usr/local/bin:/usr/bin:/bin");
-    let path_env = if bin_dir.exists() {
-        format!("{}:{}", bin_dir, base_path)
-    } else {
-        base_path.to_string()
-    };
+    let path_env = build_path_env(bin_dir_opt, graph.project_bin.as_deref(), base_path);
 
     let output = match sandbox {
         Sandbox::None => build_assertion_command_bare(assertion, work_dir, state_env, &path_env),
@@ -480,7 +707,29 @@ fn run_single_assertion(
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
-    // Non-zero exit = failure
+    // Exit code check: should_fail inverts the expectation
+    if assertion.should_fail {
+        if output.status.success() {
+            return AssertionResult {
+                name: assertion.name.clone(),
+                passed: false,
+                exit_code,
+                stdout_diff: None,
+                stderr_diff: None,
+                error: Some("expected command to fail, but it exited 0".into()),
+            };
+        }
+        // Command failed as expected — pass (no stdout/stderr comparison for should_fail)
+        return AssertionResult {
+            name: assertion.name.clone(),
+            passed: true,
+            exit_code,
+            stdout_diff: None,
+            stderr_diff: None,
+            error: None,
+        };
+    }
+
     if !output.status.success() {
         return AssertionResult {
             name: assertion.name.clone(),
@@ -586,6 +835,7 @@ fn build_assertion_command_flox(
                 .env_clear()
                 .envs(state_env.iter())
                 .env("PATH", path_env)
+                .env("SHELL", "/bin/sh")
                 .output(),
         )
     } else {
@@ -602,6 +852,7 @@ fn build_assertion_command_flox(
                 .env_clear()
                 .envs(state_env.iter())
                 .env("PATH", path_env)
+                .env("SHELL", "/bin/sh")
                 .output(),
         )
     }
@@ -620,18 +871,19 @@ fn execute_transition(
     let source_name = graph.states[transition.source.0].name.clone();
     let target_name = target.name.clone();
 
-    // Build PATH: source state's config bin/ prepended to the state's PATH (or system defaults)
+    // Build PATH: source state's config bin/ → project bin/ → base PATH
     let source_state = &graph.states[transition.source.0];
     let bin_dir = source_state.path.join(&graph.config_dir).join("bin");
+    let bin_dir_opt = if bin_dir.exists() {
+        Some(bin_dir.as_path())
+    } else {
+        None
+    };
     let base_path = source_env
         .get("PATH")
         .map(|s| s.as_str())
         .unwrap_or("/usr/local/bin:/usr/bin:/bin");
-    let path_env = if bin_dir.exists() {
-        format!("{}:{}", bin_dir, base_path)
-    } else {
-        base_path.to_string()
-    };
+    let path_env = build_path_env(bin_dir_opt, graph.project_bin.as_deref(), base_path);
 
     // Run the command, wrapping in flox activate when a Flox sandbox is active.
     let output = match sandbox {
@@ -724,14 +976,16 @@ fn execute_transition(
         }
     }
 
-    // Resolve bin_dir from the source state's config dir bin/
+    // Build bin dirs for comparator PATH: state bin/ + project bin/
     let source_state = &graph.states[transition.source.0];
     let bin_dir = source_state.path.join(&graph.config_dir).join("bin");
-    let bin_dir_ref = if bin_dir.exists() {
-        Some(bin_dir.as_path())
-    } else {
-        None
-    };
+    let mut comparator_bin_dirs: Vec<&Utf8Path> = Vec::new();
+    if bin_dir.exists() {
+        comparator_bin_dirs.push(bin_dir.as_path());
+    }
+    if let Some(ref pb) = graph.project_bin {
+        comparator_bin_dirs.push(pb.as_path());
+    }
 
     // Extract flox paths for comparator execution
     let flox = match sandbox {
@@ -747,7 +1001,7 @@ fn execute_transition(
         work_dir,
         &target.path,
         &transition.file_comparators,
-        bin_dir_ref,
+        &comparator_bin_dirs,
         &graph.config_dir,
         &graph.ignore,
         flox,
@@ -759,7 +1013,7 @@ fn execute_transition(
             source_env,
             &target.env,
             &transition.env_comparators,
-            bin_dir_ref,
+            &comparator_bin_dirs,
             flox,
         )
     } else {
@@ -863,6 +1117,7 @@ fn build_command_flox(
                 .env_clear()
                 .envs(source_env.iter())
                 .env("PATH", path_env)
+                .env("SHELL", "/bin/sh")
                 .output(),
         )
     } else {
@@ -879,6 +1134,7 @@ fn build_command_flox(
                 .env_clear()
                 .envs(source_env.iter())
                 .env("PATH", path_env)
+                .env("SHELL", "/bin/sh")
                 .output(),
         )
     }
@@ -898,7 +1154,7 @@ mod tests {
     }
 
     #[test]
-    fn detect_sandbox_none_without_flox_dir() {
+    fn detect_sandbox_none_when_no_config() {
         let tmp = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(tmp.path()).unwrap();
 
@@ -914,14 +1170,24 @@ transitions:
         make_state(root, "b", "{}");
 
         let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(matches!(graph.sandbox_config, SandboxConfig::None));
         let sandbox = detect_sandbox(&graph).unwrap();
         assert!(matches!(sandbox, Sandbox::None));
     }
 
     #[test]
-    fn detect_sandbox_flox_when_dir_exists() {
+    fn detect_sandbox_packages_creates_env() {
         let tmp = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        // Create project-level config with packages
+        let root_missouri = root.join(".missouri");
+        fs::create_dir_all(&root_missouri).unwrap();
+        fs::write(
+            root_missouri.join("missouri.yml"),
+            "packages:\n  - python3\n  - uv\n",
+        )
+        .unwrap();
 
         make_state(
             root,
@@ -934,23 +1200,85 @@ transitions:
         );
         make_state(root, "b", "{}");
 
-        // Create a .flox/ directory at the project root
-        fs::create_dir_all(root.join(".flox")).unwrap();
-
         let graph = StateGraph::discover(root, ".missouri").unwrap();
-        let sandbox = detect_sandbox(&graph).unwrap();
+        assert!(matches!(graph.sandbox_config, SandboxConfig::Packages(_)));
 
-        // flox is installed on this machine, so it should resolve
+        let sandbox = detect_sandbox(&graph).unwrap();
         match sandbox {
             Sandbox::Flox {
                 flox_bin,
                 project_root,
             } => {
                 assert!(flox_bin.as_str().contains("flox"));
-                assert_eq!(project_root, graph.root);
+                // project_root should be the managed env inside .missouri/
+                assert!(project_root.as_str().ends_with(".missouri"));
+                // A .flox/ dir should have been created inside .missouri/
+                assert!(project_root.join(".flox").exists());
+                // manifest.toml should contain our packages
+                let manifest =
+                    fs::read_to_string(project_root.join(".flox/env/manifest.toml")).unwrap();
+                assert!(manifest.contains("python3"));
+                assert!(manifest.contains("uv"));
             }
             Sandbox::None => panic!("expected Sandbox::Flox"),
         }
+    }
+
+    #[test]
+    fn detect_sandbox_manifest_creates_env() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        // Write a user manifest.toml at the project root
+        let manifest_content = "version = 1\n\n[install]\ncargo.pkg-path = \"cargo\"\n";
+        fs::write(root.join("manifest.toml"), manifest_content).unwrap();
+
+        // Create project-level config pointing to the manifest
+        let root_missouri = root.join(".missouri");
+        fs::create_dir_all(&root_missouri).unwrap();
+        fs::write(
+            root_missouri.join("missouri.yml"),
+            "flox:\n  manifest: \"manifest.toml\"\n",
+        )
+        .unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(matches!(graph.sandbox_config, SandboxConfig::Manifest(_)));
+
+        let sandbox = detect_sandbox(&graph).unwrap();
+        match sandbox {
+            Sandbox::Flox {
+                flox_bin,
+                project_root,
+            } => {
+                assert!(flox_bin.as_str().contains("flox"));
+                assert!(project_root.join(".flox").exists());
+                // The user's manifest should have been copied in
+                let manifest =
+                    fs::read_to_string(project_root.join(".flox/env/manifest.toml")).unwrap();
+                assert!(manifest.contains("cargo"));
+            }
+            Sandbox::None => panic!("expected Sandbox::Flox"),
+        }
+    }
+
+    #[test]
+    fn generate_manifest_from_packages() {
+        let manifest = generate_manifest(&["python3".into(), "uv".into()]);
+        assert!(manifest.contains("version = 1"));
+        assert!(manifest.contains("python3.pkg-path = \"python3\""));
+        assert!(manifest.contains("uv.pkg-path = \"uv\""));
     }
 
     #[test]

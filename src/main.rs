@@ -6,7 +6,7 @@ use miette::IntoDiagnostic;
 
 mod cli;
 
-use cli::{Args, Command, ListKind};
+use cli::{Args, Command, ListKind, StateCommand};
 
 fn main() -> ExitCode {
     let args = Args::parse();
@@ -39,6 +39,9 @@ fn main() -> ExitCode {
 }
 
 fn run(args: Args) -> miette::Result<bool> {
+    if let Some(dir) = &args.directory {
+        std::env::set_current_dir(dir.as_std_path()).into_diagnostic()?;
+    }
     let config_dir = &args.config_dir;
     match args.command {
         Command::Run(run_args) => {
@@ -74,6 +77,16 @@ fn run(args: Args) -> miette::Result<bool> {
                 sandbox,
                 check_mode,
             };
+
+            // Run setup commands before test paths (if any)
+            if !graph.setup.is_empty() {
+                let setup_results = missouri::executor::run_setup_phase(&graph, &opts);
+                let setup_passed =
+                    missouri::report::print_setup_results(&setup_results, run_args.verbose > 0);
+                if !setup_passed {
+                    return Ok(false);
+                }
+            }
 
             let results = missouri::executor::run_all_paths(&graph, &paths, &opts);
             let all_passed = missouri::report::print_results(&results, run_args.verbose > 0);
@@ -112,6 +125,26 @@ fn run(args: Args) -> miette::Result<bool> {
             );
             Ok(true)
         }
+        Command::Init(init_args) => {
+            let dir = resolve_dir(&init_args.dir)?;
+            missouri::scaffold::init_project(&dir, config_dir).into_diagnostic()?;
+            println!("initialized missouri project at {}", dir.join(config_dir));
+            Ok(true)
+        }
+        Command::State(state_args) => match state_args.command {
+            StateCommand::Add(add_args) => {
+                let dir = resolve_dir(&add_args.dir)?;
+                missouri::scaffold::add_state(
+                    &dir,
+                    config_dir,
+                    &add_args.name,
+                    add_args.from.as_deref(),
+                )
+                .into_diagnostic()?;
+                println!("created state \"{}\"", add_args.name);
+                Ok(true)
+            }
+        },
     }
 }
 

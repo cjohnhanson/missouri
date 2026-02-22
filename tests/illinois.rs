@@ -28,7 +28,10 @@ fn setup_illinois_scenario(fixture_name: &str, expected_exit_code: u8) -> tempfi
     fs::create_dir_all(&before_bin).unwrap();
 
     // Copy the fixture into before/fixture/
-    let fixture_src = Utf8PathBuf::from(format!("tests/fixtures/{fixture_name}"));
+    let fixture_src = Utf8PathBuf::from(format!(
+        "{}/tests/fixtures/{fixture_name}",
+        env!("CARGO_MANIFEST_DIR")
+    ));
     copy_dir_all(&fixture_src, &before.join("fixture"));
 
     // Create a placeholder exit_code.txt in before
@@ -153,7 +156,10 @@ fn setup_illinois_flox_scenario(fixture_name: &str, expected_exit_code: u8) -> t
     fs::create_dir_all(&before_bin).unwrap();
 
     // Copy the fixture into before/fixture/
-    let fixture_src = Utf8PathBuf::from(format!("tests/fixtures/{fixture_name}"));
+    let fixture_src = Utf8PathBuf::from(format!(
+        "{}/tests/fixtures/{fixture_name}",
+        env!("CARGO_MANIFEST_DIR")
+    ));
     copy_dir_all(&fixture_src, &before.join("fixture"));
 
     // Create a placeholder exit_code.txt in before

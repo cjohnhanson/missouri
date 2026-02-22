@@ -63,6 +63,26 @@ pub struct Assertion {
     pub state: StateId,
     pub expected_stdout: Option<String>,
     pub expected_stderr: Option<String>,
+    pub should_fail: bool,
+}
+
+/// A resolved setup command from project-level config.
+#[derive(Debug)]
+pub struct SetupCommand {
+    pub name: String,
+    pub command: String,
+    pub shell: bool,
+}
+
+/// Sandbox configuration parsed from project-level missouri.yml.
+#[derive(Debug, Clone)]
+pub enum SandboxConfig {
+    /// No sandbox — bare execution with env_clear + manual PATH.
+    None,
+    /// Simple mode: install these nix packages via flox.
+    Packages(Vec<String>),
+    /// Advanced mode: use a user-provided manifest.toml.
+    Manifest(Utf8PathBuf),
 }
 
 /// The complete state graph.
@@ -80,6 +100,14 @@ pub struct StateGraph {
     pub root: Utf8PathBuf,
     /// Project-level ignore patterns from `<config_dir>/ignore` (gitignore syntax).
     pub ignore: Gitignore,
+    /// Project-level env vars (before state-level merging).
+    pub project_env: std::collections::BTreeMap<String, String>,
+    /// Project-level setup commands (run before test paths).
+    pub setup: Vec<SetupCommand>,
+    /// Project-level shared bin/ directory (if it exists).
+    pub project_bin: Option<Utf8PathBuf>,
+    /// Sandbox configuration from project-level missouri.yml.
+    pub sandbox_config: SandboxConfig,
 }
 
 impl StateGraph {
@@ -88,9 +116,14 @@ impl StateGraph {
     pub fn discover(root: &Utf8Path, config_dir: &str) -> Result<Self> {
         let root = root.canonicalize_utf8().map_err(|e| Error::Io(e))?;
 
+        // Phase 0: Load project-level config (optional)
+        let (project_env, setup, project_bin, sandbox_config) =
+            load_project_config(&root, config_dir)?;
+
         // Phase 1: Find all directories containing <config_dir>/missouri.yml
+        // (excludes the root itself — root config is project-level, not a state)
         let mut state_paths: Vec<Utf8PathBuf> = Vec::new();
-        collect_states(&root, config_dir, &mut state_paths)?;
+        collect_states(&root, config_dir, &root, &mut state_paths)?;
         state_paths.sort();
 
         // Phase 2: Build state nodes
@@ -112,12 +145,16 @@ impl StateGraph {
 
             let name = path.file_name().unwrap_or(path.as_str()).to_string();
 
+            // Merge env: project env is the base, state env overrides
+            let mut merged_env = project_env.clone();
+            merged_env.extend(cfg.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+
             path_to_id.insert(path.clone(), id);
             states.push(State {
                 id,
                 path: path.clone(),
                 name,
-                env: cfg.env.clone(),
+                env: merged_env,
             });
             configs.push(cfg);
         }
@@ -188,6 +225,7 @@ impl StateGraph {
                     state: state_id,
                     expected_stdout: a.stdout.clone(),
                     expected_stderr: a.stderr.clone(),
+                    should_fail: a.should_fail,
                 });
             }
         }
@@ -202,6 +240,10 @@ impl StateGraph {
             config_dir: config_dir.to_string(),
             root: root.clone(),
             ignore,
+            project_env,
+            setup,
+            project_bin,
+            sandbox_config,
         })
     }
 
@@ -258,12 +300,81 @@ fn load_ignore_patterns(root: &Utf8Path, config_dir: &str) -> Result<Gitignore> 
     })
 }
 
+/// Load project-level config from `<root>/<config_dir>/missouri.yml`.
+///
+/// Returns (project_env, setup_commands, project_bin, sandbox_config).
+/// All are empty/None if the file doesn't exist.
+fn load_project_config(
+    root: &Utf8Path,
+    config_dir: &str,
+) -> Result<(
+    BTreeMap<String, String>,
+    Vec<SetupCommand>,
+    Option<Utf8PathBuf>,
+    SandboxConfig,
+)> {
+    let config_path = root.join(config_dir).join("missouri.yml");
+
+    let (project_env, setup, sandbox_config) = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).map_err(|e| Error::ConfigRead {
+            path: config_path.clone(),
+            source: e,
+        })?;
+        let cfg = config::parse_project_config(&content).map_err(|e| Error::ConfigParse {
+            path: config_path,
+            source: e,
+        })?;
+
+        let setup_commands: Vec<SetupCommand> = cfg
+            .setup
+            .iter()
+            .enumerate()
+            .map(|(i, s)| SetupCommand {
+                name: s.name.clone().unwrap_or_else(|| format!("setup[{i}]")),
+                command: s.command.clone(),
+                shell: s.shell,
+            })
+            .collect();
+
+        let sandbox = if let Some(flox_cfg) = cfg.flox {
+            // Resolve manifest path relative to project root
+            SandboxConfig::Manifest(root.join(&flox_cfg.manifest))
+        } else if !cfg.packages.is_empty() {
+            SandboxConfig::Packages(cfg.packages)
+        } else {
+            SandboxConfig::None
+        };
+
+        (cfg.env, setup_commands, sandbox)
+    } else {
+        (BTreeMap::new(), Vec::new(), SandboxConfig::None)
+    };
+
+    let bin_path = root.join(config_dir).join("bin");
+    let project_bin = if bin_path.exists() {
+        Some(bin_path)
+    } else {
+        None
+    };
+
+    Ok((project_env, setup, project_bin, sandbox_config))
+}
+
 /// Recursively find directories containing `<config_dir>/missouri.yml`.
-fn collect_states(dir: &Utf8Path, config_dir: &str, out: &mut Vec<Utf8PathBuf>) -> Result<()> {
-    let cfg_dir = dir.join(config_dir);
-    let config_file = cfg_dir.join("missouri.yml");
-    if config_file.exists() {
-        out.push(dir.to_owned());
+/// Skips the project root (its missouri.yml is project-level config, not a state).
+fn collect_states(
+    dir: &Utf8Path,
+    config_dir: &str,
+    project_root: &Utf8Path,
+    out: &mut Vec<Utf8PathBuf>,
+) -> Result<()> {
+    // Don't treat the project root as a state
+    if dir != project_root {
+        let cfg_dir = dir.join(config_dir);
+        let config_file = cfg_dir.join("missouri.yml");
+        if config_file.exists() {
+            out.push(dir.to_owned());
+        }
     }
 
     let entries = std::fs::read_dir(dir)?;
@@ -277,7 +388,7 @@ fn collect_states(dir: &Utf8Path, config_dir: &str, out: &mut Vec<Utf8PathBuf>) 
             if name.starts_with('.') {
                 continue;
             }
-            collect_states(&path, config_dir, out)?;
+            collect_states(&path, config_dir, project_root, out)?;
         }
     }
     Ok(())
@@ -435,5 +546,163 @@ transitions:
 
         let outgoing = graph.outgoing(roots[0]);
         assert_eq!(outgoing.len(), 2);
+    }
+
+    #[test]
+    fn discover_project_config_env_merges() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        // Project-level config with env
+        let root_missouri = root.join(".missouri");
+        fs::create_dir_all(&root_missouri).unwrap();
+        fs::write(
+            root_missouri.join("missouri.yml"),
+            r#"
+env:
+  PROJECT_VAR: from_project
+  OVERRIDE_ME: project_value
+"#,
+        )
+        .unwrap();
+
+        // State with its own env that overrides one key
+        make_state(
+            root,
+            "a",
+            r#"
+env:
+  OVERRIDE_ME: state_value
+  STATE_VAR: only_in_state
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+
+        // Find state "a" — should have merged env
+        let state_a = graph.states.iter().find(|s| s.name == "a").unwrap();
+        assert_eq!(state_a.env["PROJECT_VAR"], "from_project");
+        assert_eq!(state_a.env["OVERRIDE_ME"], "state_value");
+        assert_eq!(state_a.env["STATE_VAR"], "only_in_state");
+
+        // State "b" has no state env — should inherit project env
+        let state_b = graph.states.iter().find(|s| s.name == "b").unwrap();
+        assert_eq!(state_b.env["PROJECT_VAR"], "from_project");
+        assert_eq!(state_b.env["OVERRIDE_ME"], "project_value");
+    }
+
+    #[test]
+    fn discover_project_bin_detected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let root_missouri = root.join(".missouri");
+        let root_bin = root_missouri.join("bin");
+        fs::create_dir_all(&root_bin).unwrap();
+        fs::write(root_missouri.join("missouri.yml"), "{}").unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(graph.project_bin.is_some());
+        assert!(graph
+            .project_bin
+            .unwrap()
+            .as_str()
+            .ends_with(".missouri/bin"));
+    }
+
+    #[test]
+    fn discover_project_bin_none_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(graph.project_bin.is_none());
+    }
+
+    #[test]
+    fn discover_setup_commands() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let root_missouri = root.join(".missouri");
+        fs::create_dir_all(&root_missouri).unwrap();
+        fs::write(
+            root_missouri.join("missouri.yml"),
+            r#"
+setup:
+  - name: "build"
+    command: "cargo build"
+  - command: "db-seed"
+    shell: false
+"#,
+        )
+        .unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.setup.len(), 2);
+        assert_eq!(graph.setup[0].name, "build");
+        assert_eq!(graph.setup[0].command, "cargo build");
+        assert!(graph.setup[0].shell);
+        assert_eq!(graph.setup[1].command, "db-seed");
+        assert!(!graph.setup[1].shell);
+    }
+
+    #[test]
+    fn discover_no_project_config_is_fine() {
+        // No root-level missouri.yml — everything should still work
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(graph.setup.is_empty());
+        assert!(graph.project_bin.is_none());
     }
 }

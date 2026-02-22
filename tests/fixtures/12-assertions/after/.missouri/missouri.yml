@@ -4,3 +4,6 @@ assertions:
     stdout: "transformed\n"
   - name: "bin script check"
     command: "check-data"
+  - name: "original content is gone"
+    command: "grep -q original data.txt"
+    should_fail: true

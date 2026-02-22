@@ -1,0 +1,4 @@
+transitions:
+  - name: "copy data"
+    command: "printf 'hello\n' > data.txt"
+    target: "../after"

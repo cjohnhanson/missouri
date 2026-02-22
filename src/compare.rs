@@ -69,7 +69,7 @@ pub fn compare_trees(
     actual: &Utf8Path,
     expected: &Utf8Path,
     file_comparators: &[(Utf8PathBuf, FileComparator)],
-    bin_dir: Option<&Utf8Path>,
+    bin_dirs: &[&Utf8Path],
     config_dir: &str,
     ignore: &Gitignore,
     flox: Option<(&Utf8Path, &Utf8Path)>,
@@ -108,7 +108,7 @@ pub fn compare_trees(
                         continue;
                     }
 
-                    match run_comparator(command, &actual_path, &expected_path, bin_dir, flox) {
+                    match run_comparator(command, &actual_path, &expected_path, bin_dirs, flox) {
                         Ok(()) => {}
                         Err(stderr) => {
                             diffs.push(FileDiff::ComparatorFailed {
@@ -173,7 +173,7 @@ pub fn compare_env(
     actual_env: &BTreeMap<String, String>,
     expected_env: &BTreeMap<String, String>,
     env_comparators: &[(String, EnvComparator)],
-    bin_dir: Option<&Utf8Path>,
+    bin_dirs: &[&Utf8Path],
     flox: Option<(&Utf8Path, &Utf8Path)>,
 ) -> Vec<EnvDiff> {
     let mut diffs = Vec::new();
@@ -191,7 +191,7 @@ pub fn compare_env(
                         command,
                         Utf8Path::new(actual_val),
                         Utf8Path::new(expected_val),
-                        bin_dir,
+                        bin_dirs,
                         flox,
                     ) {
                         Ok(()) => {}
@@ -323,15 +323,13 @@ fn run_comparator(
     command: &str,
     arg1: &Utf8Path,
     arg2: &Utf8Path,
-    bin_dir: Option<&Utf8Path>,
+    bin_dirs: &[&Utf8Path],
     flox: Option<(&Utf8Path, &Utf8Path)>,
 ) -> Result<(), String> {
-    // Build PATH with bin_dir prepended if available
-    let path_env = if let Some(bin) = bin_dir {
-        format!("{}:/usr/local/bin:/usr/bin:/bin", bin)
-    } else {
-        "/usr/local/bin:/usr/bin:/bin".into()
-    };
+    // Build PATH with bin dirs prepended
+    let mut path_parts: Vec<&str> = bin_dirs.iter().map(|b| b.as_str()).collect();
+    path_parts.push("/usr/local/bin:/usr/bin:/bin");
+    let path_env = path_parts.join(":");
 
     let inner_cmd = format!(
         "{command} {} {}",
@@ -398,7 +396,7 @@ mod tests {
         fs::write(a.join("file.txt"), "hello").unwrap();
         fs::write(b.join("file.txt"), "hello").unwrap();
 
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &empty_ignore(), None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &empty_ignore(), None);
         assert!(result.passed);
         assert!(result.file_diffs.is_empty());
     }
@@ -416,7 +414,7 @@ mod tests {
         fs::write(a.join("file.txt"), "hello").unwrap();
         fs::write(b.join("file.txt"), "world").unwrap();
 
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &empty_ignore(), None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &empty_ignore(), None);
         assert!(!result.passed);
         assert_eq!(result.file_diffs.len(), 1);
         assert!(matches!(
@@ -439,7 +437,7 @@ mod tests {
         fs::write(a.join("extra.txt"), "surprise").unwrap();
         fs::write(b.join("file.txt"), "hello").unwrap();
 
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &empty_ignore(), None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &empty_ignore(), None);
         assert!(!result.passed);
         assert!(result
             .file_diffs
@@ -461,7 +459,7 @@ mod tests {
         fs::write(b.join("file.txt"), "hello").unwrap();
         fs::write(b.join("needed.txt"), "important").unwrap();
 
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &empty_ignore(), None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &empty_ignore(), None);
         assert!(!result.passed);
         assert!(result
             .file_diffs
@@ -490,7 +488,7 @@ mod tests {
             &a,
             &b,
             &comparators,
-            None,
+            &[],
             ".missouri",
             &empty_ignore(),
             None,
@@ -513,7 +511,7 @@ mod tests {
         fs::write(a.join(".missouri").join("missouri.yml"), "{}").unwrap();
         // .missouri/ only exists in a, but should be excluded from comparison
 
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &empty_ignore(), None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &empty_ignore(), None);
         assert!(result.passed);
     }
 
@@ -524,7 +522,7 @@ mod tests {
         let mut b = BTreeMap::new();
         b.insert("KEY".into(), "value".into());
 
-        let diffs = compare_env(&a, &b, &[], None, None);
+        let diffs = compare_env(&a, &b, &[], &[], None);
         assert!(diffs.is_empty());
     }
 
@@ -535,7 +533,7 @@ mod tests {
         let mut b = BTreeMap::new();
         b.insert("KEY".into(), "val2".into());
 
-        let diffs = compare_env(&a, &b, &[], None, None);
+        let diffs = compare_env(&a, &b, &[], &[], None);
         assert_eq!(diffs.len(), 1);
         assert!(matches!(&diffs[0], EnvDiff::ValueMismatch { name, .. } if name == "KEY"));
     }
@@ -548,7 +546,7 @@ mod tests {
         b.insert("TIMESTAMP".into(), "456".into());
 
         let comparators = vec![("TIMESTAMP".into(), EnvComparator::Ignore)];
-        let diffs = compare_env(&a, &b, &comparators, None, None);
+        let diffs = compare_env(&a, &b, &comparators, &[], None);
         assert!(diffs.is_empty());
     }
 
@@ -576,7 +574,7 @@ mod tests {
         fs::write(a.join("debug.log"), "some logs").unwrap();
 
         let ignore = build_ignore(&["*.log"]);
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &ignore, None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &ignore, None);
         assert!(result.passed);
     }
 
@@ -597,7 +595,7 @@ mod tests {
         fs::write(b.join("cache.bin"), "version2").unwrap();
 
         let ignore = build_ignore(&["*.bin"]);
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &ignore, None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &ignore, None);
         assert!(result.passed);
     }
 
@@ -621,7 +619,7 @@ mod tests {
 
         // Gitignore semantics: trailing / matches directory and all contents
         let ignore = build_ignore(&["__pycache__/"]);
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &ignore, None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &ignore, None);
         assert!(result.passed);
     }
 
@@ -640,7 +638,7 @@ mod tests {
 
         // Ignore pattern doesn't match file.txt
         let ignore = build_ignore(&["*.log"]);
-        let result = compare_trees(&a, &b, &[], None, ".missouri", &ignore, None);
+        let result = compare_trees(&a, &b, &[], &[], ".missouri", &ignore, None);
         assert!(!result.passed);
     }
 }

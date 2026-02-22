@@ -2,7 +2,7 @@ use owo_colors::OwoColorize;
 use supports_color::Stream;
 
 use crate::compare::{EnvDiff, FileDiff, OutputDiff};
-use crate::executor::{AssertionResult, PathResult, StepResult};
+use crate::executor::{AssertionResult, PathResult, SetupResult, StepResult};
 
 fn use_color() -> bool {
     supports_color::on(Stream::Stdout).is_some()
@@ -312,4 +312,42 @@ pub fn print_paths(paths: &[crate::paths::TestPath], graph: &crate::graph::State
     }
     println!();
     println!("{} path(s)", paths.len());
+}
+
+/// Print setup command results. Returns true if all passed.
+pub fn print_setup_results(results: &[SetupResult], verbose: bool) -> bool {
+    for result in results {
+        let status = if result.passed {
+            if use_color() {
+                "✓ setup".green().to_string()
+            } else {
+                "✓ setup".into()
+            }
+        } else if use_color() {
+            "✗ setup".red().to_string()
+        } else {
+            "✗ setup".into()
+        };
+
+        println!("{status}: {}", result.name);
+
+        if !result.passed {
+            let exit_str = result
+                .exit_code
+                .map(|c| format!("exit code {c}"))
+                .unwrap_or_else(|| "no exit code".into());
+            println!("  {exit_str}");
+            if !result.stderr.is_empty() {
+                for line in result.stderr.lines().take(10) {
+                    println!("  {line}");
+                }
+            }
+        } else if verbose && !result.stdout.is_empty() {
+            for line in result.stdout.lines().take(5) {
+                println!("  {line}");
+            }
+        }
+    }
+
+    results.iter().all(|r| r.passed)
 }

@@ -104,14 +104,64 @@ pub struct AssertionConfig {
 
     /// Expected stderr (exact match).
     pub stderr: Option<String>,
+
+    /// When true, the assertion passes if the command exits non-zero.
+    #[serde(default)]
+    pub should_fail: bool,
+}
+
+/// Project-level missouri.yml structure (at the root config dir).
+#[derive(Debug, Deserialize)]
+pub struct ProjectConfig {
+    /// Project-level environment variables (inherited by all states).
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+
+    /// Setup commands to run before any test paths.
+    #[serde(default)]
+    pub setup: Vec<SetupCommandConfig>,
+
+    /// Nix packages to install via flox (simple mode).
+    #[serde(default)]
+    pub packages: Vec<String>,
+
+    /// Advanced flox configuration (escape hatch to full manifest).
+    #[serde(default)]
+    pub flox: Option<FloxConfig>,
+}
+
+/// Advanced flox configuration pointing to an existing manifest.toml.
+#[derive(Debug, Deserialize)]
+pub struct FloxConfig {
+    /// Path to a manifest.toml file (relative to project root).
+    pub manifest: Utf8PathBuf,
+}
+
+/// A setup command that runs before test execution.
+#[derive(Debug, Deserialize)]
+pub struct SetupCommandConfig {
+    /// Optional human-readable label.
+    pub name: Option<String>,
+
+    /// Command to execute.
+    pub command: String,
+
+    /// Whether to run via `sh -c` (default: true).
+    #[serde(default = "default_true")]
+    pub shell: bool,
 }
 
 fn default_true() -> bool {
     true
 }
 
-/// Parse a missouri.yml file from a string.
+/// Parse a state-level missouri.yml file from a string.
 pub fn parse_config(content: &str) -> Result<StateConfig, serde_yml::Error> {
+    serde_yml::from_str(content)
+}
+
+/// Parse a project-level missouri.yml file from a string.
+pub fn parse_project_config(content: &str) -> Result<ProjectConfig, serde_yml::Error> {
     serde_yml::from_str(content)
 }
 
@@ -250,5 +300,115 @@ assertions:
         let a2 = &config.assertions[2];
         assert!(!a2.shell);
         assert_eq!(a2.stderr.as_deref(), Some("warning: none\n"));
+    }
+
+    #[test]
+    fn parse_assertion_should_fail() {
+        let yaml = r#"
+assertions:
+  - name: "expect failure"
+    command: "false"
+    should_fail: true
+  - name: "expect success"
+    command: "true"
+"#;
+        let config = parse_config(yaml).unwrap();
+        assert_eq!(config.assertions.len(), 2);
+        assert!(config.assertions[0].should_fail);
+        assert!(!config.assertions[1].should_fail);
+    }
+
+    #[test]
+    fn parse_project_config_full() {
+        let yaml = r#"
+env:
+  RUST_BACKTRACE: "1"
+  APP_ENV: test
+
+setup:
+  - name: "build project"
+    command: "cargo build --release"
+  - command: "db-seed"
+    shell: false
+"#;
+        let config = parse_project_config(yaml).unwrap();
+        assert_eq!(config.env.len(), 2);
+        assert_eq!(config.env["RUST_BACKTRACE"], "1");
+        assert_eq!(config.env["APP_ENV"], "test");
+
+        assert_eq!(config.setup.len(), 2);
+        let s0 = &config.setup[0];
+        assert_eq!(s0.name.as_deref(), Some("build project"));
+        assert_eq!(s0.command, "cargo build --release");
+        assert!(s0.shell);
+
+        let s1 = &config.setup[1];
+        assert!(s1.name.is_none());
+        assert_eq!(s1.command, "db-seed");
+        assert!(!s1.shell);
+    }
+
+    #[test]
+    fn parse_project_config_empty() {
+        let yaml = "{}";
+        let config = parse_project_config(yaml).unwrap();
+        assert!(config.env.is_empty());
+        assert!(config.setup.is_empty());
+    }
+
+    #[test]
+    fn parse_project_config_env_only() {
+        let yaml = r#"
+env:
+  FOO: bar
+"#;
+        let config = parse_project_config(yaml).unwrap();
+        assert_eq!(config.env.len(), 1);
+        assert_eq!(config.env["FOO"], "bar");
+        assert!(config.setup.is_empty());
+    }
+
+    #[test]
+    fn parse_project_config_setup_only() {
+        let yaml = r#"
+setup:
+  - name: "init"
+    command: "make init"
+"#;
+        let config = parse_project_config(yaml).unwrap();
+        assert!(config.env.is_empty());
+        assert_eq!(config.setup.len(), 1);
+    }
+
+    #[test]
+    fn parse_project_config_packages() {
+        let yaml = r#"
+packages:
+  - python3
+  - uv
+"#;
+        let config = parse_project_config(yaml).unwrap();
+        assert_eq!(config.packages, vec!["python3", "uv"]);
+        assert!(config.flox.is_none());
+    }
+
+    #[test]
+    fn parse_project_config_flox_manifest() {
+        let yaml = r#"
+flox:
+  manifest: "env/manifest.toml"
+"#;
+        let config = parse_project_config(yaml).unwrap();
+        assert!(config.packages.is_empty());
+        let flox = config.flox.unwrap();
+        assert_eq!(flox.manifest.as_str(), "env/manifest.toml");
+    }
+
+    #[test]
+    fn parse_project_config_no_sandbox() {
+        let yaml = "{}";
+        let config = parse_project_config(yaml).unwrap();
+        assert!(config.packages.is_empty());
+        assert!(config.flox.is_none());
     }
 }

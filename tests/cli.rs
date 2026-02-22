@@ -1,3 +1,5 @@
+use std::fs;
+
 use assert_cmd::Command;
 use predicates::prelude::*;
 
@@ -6,7 +8,24 @@ fn missouri() -> Command {
 }
 
 fn fixture(name: &str) -> String {
-    format!("tests/fixtures/{name}")
+    format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))
+}
+
+fn tmpdir() -> tempfile::TempDir {
+    tempfile::tempdir().unwrap()
+}
+
+// --- -C flag (change directory) ---
+
+#[test]
+fn dash_c_changes_directory() {
+    missouri()
+        .arg("-C")
+        .arg(fixture("01-trivial"))
+        .arg("run")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS"));
 }
 
 // --- 01: Trivial (two states, one transition, no comparators) ---
@@ -243,4 +262,201 @@ fn assertions_flags_conflict() {
         .arg("--no-check")
         .assert()
         .failure();
+}
+
+// --- 12: Project-level shared bin/ ---
+// After deduplication, check-data lives in .missouri/bin/ at the root
+// and both states find it via project bin on PATH.
+#[test]
+fn assertions_project_bin_passes() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("12-assertions"))
+        .arg("-v")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("assert: bin script check"));
+}
+
+// --- 13: Setup commands ---
+
+#[test]
+fn setup_runs_before_paths() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("13-setup"))
+        .arg("-v")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("setup"))
+        .stdout(predicate::str::contains("PASS"));
+}
+
+#[test]
+fn setup_failure_stops_execution() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("14-setup-fail"))
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("setup"));
+}
+
+// --- init command ---
+
+#[test]
+fn init_creates_project_structure() {
+    let tmp = tmpdir();
+    let dir = tmp.path().to_str().unwrap();
+    missouri().arg("init").arg("-d").arg(dir).assert().success();
+
+    assert!(tmp.path().join(".missouri").is_dir());
+    assert!(tmp.path().join(".missouri/missouri.yml").is_file());
+    assert!(tmp.path().join(".missouri/bin").is_dir());
+    assert!(tmp.path().join(".missouri/ignore").is_file());
+}
+
+#[test]
+fn init_with_custom_config_dir() {
+    let tmp = tmpdir();
+    let dir = tmp.path().to_str().unwrap();
+    missouri()
+        .arg("--config-dir")
+        .arg(".test-config")
+        .arg("init")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    assert!(tmp.path().join(".test-config").is_dir());
+    assert!(tmp.path().join(".test-config/missouri.yml").is_file());
+    assert!(tmp.path().join(".test-config/bin").is_dir());
+}
+
+#[test]
+fn init_fails_if_already_initialized() {
+    let tmp = tmpdir();
+    let dir = tmp.path().to_str().unwrap();
+
+    missouri().arg("init").arg("-d").arg(dir).assert().success();
+
+    missouri()
+        .arg("init")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already initialized"));
+}
+
+// --- state add command ---
+
+#[test]
+fn state_add_creates_empty_state() {
+    let tmp = tmpdir();
+    let dir = tmp.path().to_str().unwrap();
+    missouri().arg("init").arg("-d").arg(dir).assert().success();
+
+    missouri()
+        .arg("state")
+        .arg("add")
+        .arg("my-state")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    assert!(tmp.path().join("my-state").is_dir());
+    assert!(tmp.path().join("my-state/.missouri/missouri.yml").is_file());
+}
+
+#[test]
+fn state_add_fails_if_state_exists() {
+    let tmp = tmpdir();
+    let dir = tmp.path().to_str().unwrap();
+    missouri().arg("init").arg("-d").arg(dir).assert().success();
+
+    missouri()
+        .arg("state")
+        .arg("add")
+        .arg("my-state")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    missouri()
+        .arg("state")
+        .arg("add")
+        .arg("my-state")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
+}
+
+#[test]
+fn state_add_from_copies_state_and_creates_transition() {
+    let tmp = tmpdir();
+    let dir = tmp.path().to_str().unwrap();
+    missouri().arg("init").arg("-d").arg(dir).assert().success();
+
+    missouri()
+        .arg("state")
+        .arg("add")
+        .arg("before")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    // Add a data file to the source state
+    fs::write(tmp.path().join("before/data.txt"), "hello\n").unwrap();
+
+    missouri()
+        .arg("state")
+        .arg("add")
+        .arg("after")
+        .arg("--from")
+        .arg("before")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .success();
+
+    // Data file was copied
+    assert_eq!(
+        fs::read_to_string(tmp.path().join("after/data.txt")).unwrap(),
+        "hello\n"
+    );
+    // Config was copied
+    assert!(tmp.path().join("after/.missouri/missouri.yml").is_file());
+    // Transition was appended to source
+    let yml = fs::read_to_string(tmp.path().join("before/.missouri/missouri.yml")).unwrap();
+    assert!(yml.contains("../after"));
+    assert!(yml.contains("TODO"));
+}
+
+#[test]
+fn state_add_from_nonexistent_fails() {
+    let tmp = tmpdir();
+    let dir = tmp.path().to_str().unwrap();
+    missouri().arg("init").arg("-d").arg(dir).assert().success();
+
+    missouri()
+        .arg("state")
+        .arg("add")
+        .arg("after")
+        .arg("--from")
+        .arg("nonexistent")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"));
 }
