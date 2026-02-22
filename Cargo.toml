@@ -11,10 +11,9 @@ dotenvy = "0.15"
 ignore = "0.4"
 indicatif = "0.17"
 miette = { version = "7", features = ["fancy"] }
-owo-colors = "4"
 serde = { version = "1", features = ["derive"] }
 serde_yml = "0.0"
-supports-color = "3"
+termimad = "0.34"
 tempfile = "3"
 thiserror = "2"
 tracing = "0.1"
