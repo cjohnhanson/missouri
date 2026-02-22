@@ -1,0 +1,13 @@
+
+    
+    
+    
+    create table "warehouse"."main"."raw_customers" ("id" integer,"name" text,"email" text,"created_at" date)
+  ;
+    -- dbt seed --
+    
+          COPY "warehouse"."main"."raw_customers" FROM '/private/tmp/dbt-gen/dbt-project/seeds/raw_customers.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',')
+        
+
+;
+  

@@ -1,0 +1,5 @@
+# Machine-specific, rebuilt by uv
+.venv/
+
+# Created by uv init, not relevant to state comparison
+.git/

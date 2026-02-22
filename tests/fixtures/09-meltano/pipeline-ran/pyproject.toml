@@ -1,0 +1,8 @@
+[project]
+name = "meltano-project"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "meltano==4.1.2",
+]

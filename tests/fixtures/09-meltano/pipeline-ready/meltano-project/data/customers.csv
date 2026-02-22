@@ -1,0 +1,6 @@
+id,name,email,plan
+1,Alice,alice@example.com,pro
+2,Bob,bob@example.com,free
+3,Charlie,charlie@example.com,pro
+4,Diana,diana@example.com,enterprise
+5,Eve,eve@example.com,free

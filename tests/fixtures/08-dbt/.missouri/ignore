@@ -1,0 +1,14 @@
+# Machine-specific, rebuilt by uv
+.venv/
+
+# dbt logs contain timestamps
+logs/
+
+# dbt internal artifacts with timestamps/hashes
+target/manifest.json
+target/partial_parse.msgpack
+target/graph.gpickle
+target/graph_summary.json
+target/semantic_manifest.json
+target/run_results.json
+.user.yml

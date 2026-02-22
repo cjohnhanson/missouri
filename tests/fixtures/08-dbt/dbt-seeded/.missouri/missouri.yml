@@ -1,0 +1,8 @@
+transitions:
+  - name: "dbt run"
+    command: "uv run dbt run --profiles-dir ."
+    target: "../dbt-ran"
+    comparators:
+      files:
+        - path: "warehouse.duckdb"
+          command: "compare-duckdb"

@@ -1,0 +1,12 @@
+import cowsay
+
+
+def main():
+    result = cowsay.get_output_string("cow", "Hello from myproject!")
+    with open("output.txt", "w") as f:
+        f.write(result)
+        f.write("\n")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,8 @@
+env:
+  APP_NAME: "missouri-test"
+  MODE: "testing"
+
+transitions:
+  - name: "write config from env"
+    command: "echo \"app=$APP_NAME mode=$MODE\" > config.txt"
+    target: "../end"

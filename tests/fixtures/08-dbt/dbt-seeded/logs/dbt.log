@@ -1,0 +1,186 @@
+[0m19:33:26.426588 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1066a8c20>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1105bbed0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1105bbb10>]}
+
+
+============================== 19:33:26.448080 | 208451ac-a9e0-47d6-a87f-3d2984422446 ==============================
+[0m19:33:26.448080 [info ] [MainThread]: Running with dbt=1.11.6
+[0m19:33:26.448511 [debug] [MainThread]: running dbt with arguments {'indirect_selection': 'eager', 'send_anonymous_usage_stats': 'True', 'warn_error': 'None', 'log_cache_events': 'False', 'printer_width': '80', 'introspect': 'True', 'log_path': '/private/tmp/dbt-gen/dbt-project/logs', 'log_format': 'default', 'static_parser': 'True', 'fail_fast': 'False', 'use_experimental_parser': 'False', 'no_print': 'None', 'version_check': 'True', 'empty': 'None', 'cache_selected_only': 'False', 'partial_parse': 'True', 'write_json': 'True', 'target_path': 'None', 'quiet': 'False', 'debug': 'False', 'profiles_dir': '.', 'invocation_command': 'dbt seed --profiles-dir .', 'use_colors': 'True', 'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])'}
+[0m19:33:27.065525 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'project_id', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x106b702b0>]}
+[0m19:33:27.095573 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'adapter_info', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1104a7df0>]}
+[0m19:33:27.097597 [info ] [MainThread]: Registered adapter: duckdb=1.10.1
+[0m19:33:27.144321 [debug] [MainThread]: checksum: ec27062d18352e9cfca161c166fcc73d2201661a23a3cf3c89196a27f32cfcb8, vars: {}, profile: , target: , version: 1.11.6
+[0m19:33:27.144982 [info ] [MainThread]: Unable to do partial parsing because saved manifest not found. Starting full parse.
+[0m19:33:27.145287 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'partial_parser', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1106ea150>]}
+[0m19:33:27.770872 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'load_project', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1109e36b0>]}
+[0m19:33:27.804416 [debug] [MainThread]: Wrote artifact WritableManifest to /private/tmp/dbt-gen/dbt-project/target/manifest.json
+[0m19:33:27.805991 [debug] [MainThread]: Wrote artifact SemanticManifest to /private/tmp/dbt-gen/dbt-project/target/semantic_manifest.json
+[0m19:33:27.851873 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'resource_counts', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x110637a10>]}
+[0m19:33:27.852226 [info ] [MainThread]: Found 1 model, 2 seeds, 474 macros
+[0m19:33:27.852442 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'runnable_timing', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1109d9640>]}
+[0m19:33:27.853345 [info ] [MainThread]: 
+[0m19:33:27.853565 [info ] [MainThread]: Concurrency: 1 threads (target='dev')
+[0m19:33:27.853757 [info ] [MainThread]: 
+[0m19:33:27.854055 [debug] [MainThread]: Acquiring new duckdb connection 'master'
+[0m19:33:27.856482 [debug] [ThreadPool]: Acquiring new duckdb connection 'list_warehouse'
+[0m19:33:27.895947 [debug] [ThreadPool]: Using duckdb connection "list_warehouse"
+[0m19:33:27.896251 [debug] [ThreadPool]: On list_warehouse: /* {"app": "dbt", "dbt_version": "1.11.6", "profile_name": "dbt_project", "target_name": "dev", "connection_name": "list_warehouse"} */
+
+    
+    select schema_name
+    from system.information_schema.schemata
+    
+    where lower(catalog_name) = '"warehouse"'
+    
+  
+  
+[0m19:33:27.896466 [debug] [ThreadPool]: Opening a new connection, currently in state init
+[0m19:33:27.904424 [debug] [ThreadPool]: SQL status: OK in 0.008 seconds
+[0m19:33:27.905185 [debug] [ThreadPool]: On list_warehouse: Close
+[0m19:33:27.905612 [debug] [ThreadPool]: Re-using an available connection from the pool (formerly list_warehouse, now create_warehouse_main)
+[0m19:33:27.905906 [debug] [ThreadPool]: Creating schema "database: "warehouse"
+schema: "main"
+"
+[0m19:33:27.909103 [debug] [ThreadPool]: Using duckdb connection "create_warehouse_main"
+[0m19:33:27.909342 [debug] [ThreadPool]: On create_warehouse_main: /* {"app": "dbt", "dbt_version": "1.11.6", "profile_name": "dbt_project", "target_name": "dev", "connection_name": "create_warehouse_main"} */
+
+    
+        select type from duckdb_databases()
+        where lower(database_name)='warehouse'
+        and type='sqlite'
+    
+  
+[0m19:33:27.909527 [debug] [ThreadPool]: Opening a new connection, currently in state closed
+[0m19:33:27.910064 [debug] [ThreadPool]: SQL status: OK in 0.001 seconds
+[0m19:33:27.910782 [debug] [ThreadPool]: Using duckdb connection "create_warehouse_main"
+[0m19:33:27.910973 [debug] [ThreadPool]: On create_warehouse_main: BEGIN
+[0m19:33:27.911249 [debug] [ThreadPool]: SQL status: OK in 0.000 seconds
+[0m19:33:27.911429 [debug] [ThreadPool]: Using duckdb connection "create_warehouse_main"
+[0m19:33:27.911603 [debug] [ThreadPool]: On create_warehouse_main: /* {"app": "dbt", "dbt_version": "1.11.6", "profile_name": "dbt_project", "target_name": "dev", "connection_name": "create_warehouse_main"} */
+
+    
+    
+        create schema if not exists "warehouse"."main"
+    
+[0m19:33:27.911906 [debug] [ThreadPool]: SQL status: OK in 0.000 seconds
+[0m19:33:27.912398 [debug] [ThreadPool]: On create_warehouse_main: COMMIT
+[0m19:33:27.912595 [debug] [ThreadPool]: Using duckdb connection "create_warehouse_main"
+[0m19:33:27.912766 [debug] [ThreadPool]: On create_warehouse_main: COMMIT
+[0m19:33:27.913019 [debug] [ThreadPool]: SQL status: OK in 0.000 seconds
+[0m19:33:27.913197 [debug] [ThreadPool]: On create_warehouse_main: Close
+[0m19:33:27.913844 [debug] [ThreadPool]: Re-using an available connection from the pool (formerly create_warehouse_main, now list_warehouse_main)
+[0m19:33:27.916477 [debug] [ThreadPool]: Using duckdb connection "list_warehouse_main"
+[0m19:33:27.916681 [debug] [ThreadPool]: On list_warehouse_main: BEGIN
+[0m19:33:27.916850 [debug] [ThreadPool]: Opening a new connection, currently in state closed
+[0m19:33:27.917163 [debug] [ThreadPool]: SQL status: OK in 0.000 seconds
+[0m19:33:27.917369 [debug] [ThreadPool]: Using duckdb connection "list_warehouse_main"
+[0m19:33:27.917554 [debug] [ThreadPool]: On list_warehouse_main: /* {"app": "dbt", "dbt_version": "1.11.6", "profile_name": "dbt_project", "target_name": "dev", "connection_name": "list_warehouse_main"} */
+select
+      'warehouse' as database,
+      table_name as name,
+      table_schema as schema,
+      CASE table_type
+        WHEN 'BASE TABLE' THEN 'table'
+        WHEN 'VIEW' THEN 'view'
+        WHEN 'LOCAL TEMPORARY' THEN 'table'
+        END as type
+    from system.information_schema.tables
+    where lower(table_schema) = 'main'
+    and lower(table_catalog) = 'warehouse'
+  
+[0m19:33:27.922742 [debug] [ThreadPool]: SQL status: OK in 0.005 seconds
+[0m19:33:27.923851 [debug] [ThreadPool]: On list_warehouse_main: ROLLBACK
+[0m19:33:27.924471 [debug] [ThreadPool]: Failed to rollback 'list_warehouse_main'
+[0m19:33:27.924668 [debug] [ThreadPool]: On list_warehouse_main: Close
+[0m19:33:27.925019 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'runnable_timing', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x111821b50>]}
+[0m19:33:27.925312 [debug] [MainThread]: Using duckdb connection "master"
+[0m19:33:27.925510 [debug] [MainThread]: On master: BEGIN
+[0m19:33:27.925680 [debug] [MainThread]: Opening a new connection, currently in state init
+[0m19:33:27.925992 [debug] [MainThread]: SQL status: OK in 0.000 seconds
+[0m19:33:27.926174 [debug] [MainThread]: On master: COMMIT
+[0m19:33:27.926343 [debug] [MainThread]: Using duckdb connection "master"
+[0m19:33:27.926509 [debug] [MainThread]: On master: COMMIT
+[0m19:33:27.926737 [debug] [MainThread]: SQL status: OK in 0.000 seconds
+[0m19:33:27.926909 [debug] [MainThread]: On master: Close
+[0m19:33:27.929214 [debug] [Thread-1 (]: Began running node seed.dbt_project.raw_customers
+[0m19:33:27.929531 [info ] [Thread-1 (]: 1 of 2 START seed file main.raw_customers ...................................... [RUN]
+[0m19:33:27.929783 [debug] [Thread-1 (]: Re-using an available connection from the pool (formerly list_warehouse_main, now seed.dbt_project.raw_customers)
+[0m19:33:27.929987 [debug] [Thread-1 (]: Began compiling node seed.dbt_project.raw_customers
+[0m19:33:27.930183 [debug] [Thread-1 (]: Began executing node seed.dbt_project.raw_customers
+[0m19:33:27.943291 [debug] [Thread-1 (]: Using duckdb connection "seed.dbt_project.raw_customers"
+[0m19:33:27.943592 [debug] [Thread-1 (]: On seed.dbt_project.raw_customers: BEGIN
+[0m19:33:27.943804 [debug] [Thread-1 (]: Opening a new connection, currently in state closed
+[0m19:33:27.944223 [debug] [Thread-1 (]: SQL status: OK in 0.000 seconds
+[0m19:33:27.944435 [debug] [Thread-1 (]: Using duckdb connection "seed.dbt_project.raw_customers"
+[0m19:33:27.944627 [debug] [Thread-1 (]: On seed.dbt_project.raw_customers: /* {"app": "dbt", "dbt_version": "1.11.6", "profile_name": "dbt_project", "target_name": "dev", "node_id": "seed.dbt_project.raw_customers"} */
+
+    create table "warehouse"."main"."raw_customers" ("id" integer,"name" text,"email" text,"created_at" date)
+  
+[0m19:33:27.945038 [debug] [Thread-1 (]: SQL status: OK in 0.000 seconds
+[0m19:33:27.950753 [debug] [Thread-1 (]: Using duckdb connection "seed.dbt_project.raw_customers"
+[0m19:33:27.951029 [debug] [Thread-1 (]: On seed.dbt_project.raw_customers: 
+          COPY "warehouse"."main"."raw_customers" FROM '/private/tmp/dbt-gen/dbt-project/seeds/raw_customers.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',')
+        ...
+[0m19:33:27.953609 [debug] [Thread-1 (]: SQL status: OK in 0.002 seconds
+[0m19:33:27.956676 [debug] [Thread-1 (]: Writing runtime SQL for node "seed.dbt_project.raw_customers"
+[0m19:33:27.963552 [debug] [Thread-1 (]: On seed.dbt_project.raw_customers: COMMIT
+[0m19:33:27.963822 [debug] [Thread-1 (]: Using duckdb connection "seed.dbt_project.raw_customers"
+[0m19:33:27.964034 [debug] [Thread-1 (]: On seed.dbt_project.raw_customers: COMMIT
+[0m19:33:27.964752 [debug] [Thread-1 (]: SQL status: OK in 0.000 seconds
+[0m19:33:27.965749 [debug] [Thread-1 (]: On seed.dbt_project.raw_customers: Close
+[0m19:33:27.967076 [debug] [Thread-1 (]: Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x11185fcd0>]}
+[0m19:33:27.967426 [info ] [Thread-1 (]: 1 of 2 OK loaded seed file main.raw_customers .................................. [[32mINSERT 3[0m in 0.04s]
+[0m19:33:27.967748 [debug] [Thread-1 (]: Finished running node seed.dbt_project.raw_customers
+[0m19:33:27.967982 [debug] [Thread-1 (]: Began running node seed.dbt_project.raw_orders
+[0m19:33:27.968291 [info ] [Thread-1 (]: 2 of 2 START seed file main.raw_orders ......................................... [RUN]
+[0m19:33:27.968548 [debug] [Thread-1 (]: Re-using an available connection from the pool (formerly seed.dbt_project.raw_customers, now seed.dbt_project.raw_orders)
+[0m19:33:27.968753 [debug] [Thread-1 (]: Began compiling node seed.dbt_project.raw_orders
+[0m19:33:27.968948 [debug] [Thread-1 (]: Began executing node seed.dbt_project.raw_orders
+[0m19:33:27.970920 [debug] [Thread-1 (]: Using duckdb connection "seed.dbt_project.raw_orders"
+[0m19:33:27.971157 [debug] [Thread-1 (]: On seed.dbt_project.raw_orders: BEGIN
+[0m19:33:27.971365 [debug] [Thread-1 (]: Opening a new connection, currently in state closed
+[0m19:33:27.971741 [debug] [Thread-1 (]: SQL status: OK in 0.000 seconds
+[0m19:33:27.971946 [debug] [Thread-1 (]: Using duckdb connection "seed.dbt_project.raw_orders"
+[0m19:33:27.972155 [debug] [Thread-1 (]: On seed.dbt_project.raw_orders: /* {"app": "dbt", "dbt_version": "1.11.6", "profile_name": "dbt_project", "target_name": "dev", "node_id": "seed.dbt_project.raw_orders"} */
+
+    create table "warehouse"."main"."raw_orders" ("id" integer,"customer_id" integer,"amount" integer,"ordered_at" date)
+  
+[0m19:33:27.972506 [debug] [Thread-1 (]: SQL status: OK in 0.000 seconds
+[0m19:33:27.973162 [debug] [Thread-1 (]: Using duckdb connection "seed.dbt_project.raw_orders"
+[0m19:33:27.973356 [debug] [Thread-1 (]: On seed.dbt_project.raw_orders: 
+          COPY "warehouse"."main"."raw_orders" FROM '/private/tmp/dbt-gen/dbt-project/seeds/raw_orders.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',')
+        ...
+[0m19:33:27.974498 [debug] [Thread-1 (]: SQL status: OK in 0.001 seconds
+[0m19:33:27.974889 [debug] [Thread-1 (]: Writing runtime SQL for node "seed.dbt_project.raw_orders"
+[0m19:33:27.975972 [debug] [Thread-1 (]: On seed.dbt_project.raw_orders: COMMIT
+[0m19:33:27.976185 [debug] [Thread-1 (]: Using duckdb connection "seed.dbt_project.raw_orders"
+[0m19:33:27.976373 [debug] [Thread-1 (]: On seed.dbt_project.raw_orders: COMMIT
+[0m19:33:27.976739 [debug] [Thread-1 (]: SQL status: OK in 0.000 seconds
+[0m19:33:27.977164 [debug] [Thread-1 (]: On seed.dbt_project.raw_orders: Close
+[0m19:33:27.977456 [debug] [Thread-1 (]: Sending event: {'category': 'dbt', 'action': 'run_model', 'label': '208451ac-a9e0-47d6-a87f-3d2984422446', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x111c0f110>]}
+[0m19:33:27.977742 [info ] [Thread-1 (]: 2 of 2 OK loaded seed file main.raw_orders ..................................... [[32mINSERT 5[0m in 0.01s]
+[0m19:33:27.978032 [debug] [Thread-1 (]: Finished running node seed.dbt_project.raw_orders
+[0m19:33:27.978619 [debug] [MainThread]: Using duckdb connection "master"
+[0m19:33:27.978808 [debug] [MainThread]: On master: BEGIN
+[0m19:33:27.978976 [debug] [MainThread]: Opening a new connection, currently in state closed
+[0m19:33:27.979240 [debug] [MainThread]: SQL status: OK in 0.000 seconds
+[0m19:33:27.979417 [debug] [MainThread]: On master: COMMIT
+[0m19:33:27.979588 [debug] [MainThread]: Using duckdb connection "master"
+[0m19:33:27.979749 [debug] [MainThread]: On master: COMMIT
+[0m19:33:27.979963 [debug] [MainThread]: SQL status: OK in 0.000 seconds
+[0m19:33:27.980139 [debug] [MainThread]: On master: Close
+[0m19:33:27.980345 [debug] [MainThread]: Connection 'master' was properly closed.
+[0m19:33:27.980516 [debug] [MainThread]: Connection 'seed.dbt_project.raw_orders' was properly closed.
+[0m19:33:27.980691 [info ] [MainThread]: 
+[0m19:33:27.980878 [info ] [MainThread]: Finished running 2 seeds in 0 hours 0 minutes and 0.13 seconds (0.13s).
+[0m19:33:27.981265 [debug] [MainThread]: Command end result
+[0m19:33:27.991765 [debug] [MainThread]: Wrote artifact WritableManifest to /private/tmp/dbt-gen/dbt-project/target/manifest.json
+[0m19:33:27.992794 [debug] [MainThread]: Wrote artifact SemanticManifest to /private/tmp/dbt-gen/dbt-project/target/semantic_manifest.json
+[0m19:33:27.995800 [debug] [MainThread]: Wrote artifact RunExecutionResult to /private/tmp/dbt-gen/dbt-project/target/run_results.json
+[0m19:33:27.996037 [info ] [MainThread]: 
+[0m19:33:27.996269 [info ] [MainThread]: [32mCompleted successfully[0m
+[0m19:33:27.996458 [info ] [MainThread]: 
+[0m19:33:27.996653 [info ] [MainThread]: Done. PASS=2 WARN=0 ERROR=0 SKIP=0 NO-OP=0 TOTAL=2
+[0m19:33:27.997019 [debug] [MainThread]: Resource report: {"command_name": "seed", "command_success": true, "command_wall_clock_time": 1.6152183, "process_in_blocks": "0", "process_kernel_time": 0.41098, "process_mem_max_rss": "178864128", "process_out_blocks": "0", "process_user_time": 2.555484}
+[0m19:33:27.997310 [debug] [MainThread]: Command `dbt seed` succeeded at 19:33:27.997268 after 1.62 seconds
+[0m19:33:27.997538 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x110fc08d0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x106505ed0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1107800c0>]}
+[0m19:33:27.997755 [debug] [MainThread]: Flushing usage events
+[0m19:33:28.184479 [debug] [MainThread]: An error was encountered while trying to flush usage events

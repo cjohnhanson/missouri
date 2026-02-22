@@ -1,0 +1,8 @@
+transitions:
+  - name: "produce output with timestamp"
+    command: "echo result > output.txt && date > timestamp.txt"
+    target: "../after"
+    comparators:
+      files:
+        - path: "timestamp.txt"
+          ignore: true

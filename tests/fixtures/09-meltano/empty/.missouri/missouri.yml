@@ -1,0 +1,4 @@
+transitions:
+  - name: "uv init"
+    command: "uv init --name meltano-project --vcs none --no-readme --author-from none"
+    target: "../uv-initialized"

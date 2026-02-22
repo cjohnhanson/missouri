@@ -1,0 +1,8 @@
+transitions:
+  - name: "meltano config"
+    command: >-
+      cd meltano-project &&
+      printf '[{"entity": "customers", "path": "data/customers.csv", "keys": ["id"]}]' > /tmp/missouri-tap-csv-files.json &&
+      uv run meltano config set tap-csv files --from-file /tmp/missouri-tap-csv-files.json &&
+      uv run meltano config set target-jsonl destination_path output
+    target: "../configured"

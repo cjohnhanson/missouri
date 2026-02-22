@@ -1,0 +1,5 @@
+{"id": "1", "name": "Alice", "email": "alice@example.com", "plan": "pro"}
+{"id": "2", "name": "Bob", "email": "bob@example.com", "plan": "free"}
+{"id": "3", "name": "Charlie", "email": "charlie@example.com", "plan": "pro"}
+{"id": "4", "name": "Diana", "email": "diana@example.com", "plan": "enterprise"}
+{"id": "5", "name": "Eve", "email": "eve@example.com", "plan": "free"}

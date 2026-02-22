@@ -1,0 +1,7 @@
+transitions:
+  - name: "go left"
+    command: "echo left > data.txt"
+    target: "../left"
+  - name: "go right"
+    command: "echo right > data.txt"
+    target: "../right"

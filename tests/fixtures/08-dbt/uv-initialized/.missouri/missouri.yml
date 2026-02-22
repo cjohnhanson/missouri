@@ -1,0 +1,4 @@
+transitions:
+  - name: "uv add dbt"
+    command: "uv add 'dbt-core==1.11.6' 'dbt-duckdb==1.10.1'"
+    target: "../uv-added"

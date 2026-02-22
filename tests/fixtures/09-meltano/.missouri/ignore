@@ -1,0 +1,8 @@
+# Machine-specific, rebuilt by uv
+.venv/
+
+# Meltano internal state (system DB, plugin venvs, lock files)
+.meltano/
+
+# Empty plugin type dirs created non-deterministically by meltano
+meltano-project/plugins/utilities/

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Compare two DuckDB files by schema and row data.
+# Usage: compare-duckdb <actual.duckdb> <expected.duckdb>
+# Exit 0 if equivalent, non-zero with diff on stderr if not.
+
+set -e
+
+actual="$1"
+expected="$2"
+
+if [ -z "$actual" ] || [ -z "$expected" ]; then
+    echo "usage: compare-duckdb <actual> <expected>" >&2
+    exit 2
+fi
+
+dump_db() {
+    db="$1"
+    # Dump schema (table names + columns + types)
+    duckdb "$db" -csv -noheader <<'SQL'
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+ORDER BY table_name, ordinal_position;
+SQL
+
+    echo "---DATA---"
+
+    # Dump all rows from all tables, sorted deterministically
+    tables=$(duckdb "$db" -csv -noheader -c "SELECT table_name FROM information_schema.tables WHERE table_schema='main' ORDER BY table_name;")
+    for tbl in $tables; do
+        echo "TABLE:$tbl"
+        duckdb "$db" -csv -header -c "SELECT * FROM \"$tbl\" ORDER BY ALL;"
+    done
+}
+
+actual_dump=$(dump_db "$actual")
+expected_dump=$(dump_db "$expected")
+
+if [ "$actual_dump" = "$expected_dump" ]; then
+    exit 0
+else
+    echo "DuckDB contents differ:" >&2
+    diff <(echo "$actual_dump") <(echo "$expected_dump") >&2 || true
+    exit 1
+fi

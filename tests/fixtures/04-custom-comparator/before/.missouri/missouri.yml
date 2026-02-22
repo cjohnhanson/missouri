@@ -1,0 +1,8 @@
+transitions:
+  - name: "reformat json"
+    command: "python3 -c \"import json; d=json.load(open('data.json')); json.dump(d, open('data.json','w'), sort_keys=True, indent=2)\""
+    target: "../after"
+    comparators:
+      files:
+        - path: "data.json"
+          command: "compare-json"

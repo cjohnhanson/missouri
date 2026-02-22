@@ -1,0 +1,4 @@
+transitions:
+  - name: "cargo init"
+    command: "cargo init --name myproject"
+    target: "../initialized"

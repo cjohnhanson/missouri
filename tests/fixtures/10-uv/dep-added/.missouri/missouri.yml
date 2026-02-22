@@ -1,0 +1,4 @@
+transitions:
+  - name: "write and run script"
+    command: "write-and-run"
+    target: "../script-ran"

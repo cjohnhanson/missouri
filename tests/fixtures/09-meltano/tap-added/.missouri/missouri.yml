@@ -1,0 +1,4 @@
+transitions:
+  - name: "meltano add target-jsonl"
+    command: "cd meltano-project && uv run meltano add --plugin-type loader target-jsonl"
+    target: "../target-added"

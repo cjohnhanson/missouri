@@ -1,0 +1,6 @@
+transitions:
+  - name: "meltano init"
+    command: >-
+      uv run meltano init --no-usage-stats meltano-project --force &&
+      sed -i '' 's/^project_id: .*/project_id: fixed/' meltano-project/meltano.yml
+    target: "../meltano-initialized"

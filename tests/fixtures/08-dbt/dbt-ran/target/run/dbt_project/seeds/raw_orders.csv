@@ -1,0 +1,13 @@
+
+    
+    
+    
+    create table "warehouse"."main"."raw_orders" ("id" integer,"customer_id" integer,"amount" integer,"ordered_at" date)
+  ;
+    -- dbt seed --
+    
+          COPY "warehouse"."main"."raw_orders" FROM '/private/tmp/dbt-gen/dbt-project/seeds/raw_orders.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',')
+        
+
+;
+  

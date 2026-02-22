@@ -1,0 +1,4 @@
+transitions:
+  - name: "uv add meltano"
+    command: "uv add 'meltano==4.1.2'"
+    target: "../uv-added"

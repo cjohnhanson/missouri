@@ -1,0 +1,10 @@
+name: dbt_project
+version: '1.0.0'
+profile: dbt_project
+config-version: 2
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+target-path: "target"
+clean-targets:
+  - "target"
