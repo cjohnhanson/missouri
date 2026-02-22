@@ -46,6 +46,14 @@ pub struct RunArgs {
     /// Keep temp directories after run (for debugging)
     #[arg(long)]
     pub keep_temp: bool,
+
+    /// Run only state assertions (skip transitions and filesystem comparison)
+    #[arg(long, conflicts_with = "no_check")]
+    pub check_only: bool,
+
+    /// Skip all assertions (run only transitions and filesystem comparison)
+    #[arg(long, conflicts_with = "check_only")]
+    pub no_check: bool,
 }
 
 #[derive(Parser)]

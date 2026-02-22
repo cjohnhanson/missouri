@@ -369,3 +369,16 @@ fn illinois_cargo_flox_passes() {
     );
     assert!(stdout.contains("PASS"), "expected PASS in output: {stdout}");
 }
+
+#[test]
+fn illinois_assertions_passes() {
+    let tmp = setup_illinois_scenario("12-assertions", 0);
+    let output = run_illinois(&tmp);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "illinois failed:\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("PASS"), "expected PASS in output: {stdout}");
+}

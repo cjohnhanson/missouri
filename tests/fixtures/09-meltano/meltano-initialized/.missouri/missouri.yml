@@ -1,3 +1,9 @@
+assertions:
+  - name: "project_id normalized"
+    command: "grep -q 'project_id: fixed' meltano-project/meltano.yml"
+  - name: "meltano.yml exists"
+    command: "test -f meltano-project/meltano.yml"
+
 transitions:
   - name: "meltano add tap-csv"
     command: "cd meltano-project && uv run meltano add --plugin-type extractor tap-csv"

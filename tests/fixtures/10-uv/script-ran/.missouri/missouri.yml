@@ -1,1 +1,5 @@
-{}
+assertions:
+  - name: "output contains greeting"
+    command: "grep -q 'Hello from myproject' output.txt"
+  - name: "main.py exists"
+    command: "test -f main.py"

@@ -3,9 +3,9 @@ use std::process::Command;
 use camino::{Utf8Path, Utf8PathBuf};
 use tempfile::TempDir;
 
-use crate::compare::{self, ComparisonResult};
+use crate::compare::{self, ComparisonResult, OutputDiff};
 use crate::error;
-use crate::graph::{StateGraph, StateId, Transition};
+use crate::graph::{Assertion, StateGraph, StateId, Transition};
 use crate::paths::TestPath;
 
 /// Sandbox configuration for transition execution.
@@ -55,6 +55,28 @@ fn which_flox() -> Option<Utf8PathBuf> {
     std::option::Option::None
 }
 
+/// How assertions interact with the run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckMode {
+    /// Run transitions + filesystem comparison + output assertions + state assertions.
+    Full,
+    /// Run only state assertions (no transitions, no filesystem comparison).
+    CheckOnly,
+    /// Run transitions + filesystem comparison, skip all assertions.
+    NoCheck,
+}
+
+/// Result of running a single state assertion.
+#[derive(Debug)]
+pub struct AssertionResult {
+    pub name: String,
+    pub passed: bool,
+    pub exit_code: Option<i32>,
+    pub stdout_diff: Option<(String, String)>,
+    pub stderr_diff: Option<(String, String)>,
+    pub error: Option<String>,
+}
+
 /// Result of executing a single transition.
 #[derive(Debug)]
 pub struct StepResult {
@@ -65,6 +87,8 @@ pub struct StepResult {
     pub stdout: String,
     pub stderr: String,
     pub comparison: Option<ComparisonResult>,
+    pub output_diffs: Vec<OutputDiff>,
+    pub assertion_results: Vec<AssertionResult>,
     pub passed: bool,
 }
 
@@ -81,6 +105,7 @@ pub struct RunOptions {
     pub keep_temp: bool,
     pub verbose: bool,
     pub sandbox: Sandbox,
+    pub check_mode: CheckMode,
 }
 
 /// Execute all test paths and return results.
@@ -94,8 +119,116 @@ pub fn run_all_paths(graph: &StateGraph, paths: &[TestPath], opts: &RunOptions) 
 /// Execute a single test path.
 fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions) -> PathResult {
     let path_display = path.display(graph);
+
+    match opts.check_mode {
+        CheckMode::CheckOnly => run_path_check_only(graph, path, path_display, opts),
+        CheckMode::Full | CheckMode::NoCheck => {
+            run_path_transitions(graph, path, path_display, opts)
+        }
+    }
+}
+
+/// CheckOnly mode: iterate states in path order, run assertions on each.
+fn run_path_check_only(
+    graph: &StateGraph,
+    path: &TestPath,
+    path_display: String,
+    opts: &RunOptions,
+) -> PathResult {
     let mut steps = Vec::new();
     let mut passed = true;
+
+    // Collect states in path order (source of first, then targets)
+    let mut state_ids: Vec<StateId> = Vec::new();
+    if let Some(&first_ti) = path.steps.first() {
+        state_ids.push(graph.transitions[first_ti].source);
+    }
+    for &ti in &path.steps {
+        state_ids.push(graph.transitions[ti].target);
+    }
+
+    for (i, &state_id) in state_ids.iter().enumerate() {
+        let state = &graph.states[state_id.0];
+        let assertions = graph.assertions_for(state_id);
+        if assertions.is_empty() {
+            continue;
+        }
+
+        // Copy state to temp dir to run assertions
+        let (temp_dir, work_dir) = match copy_state_to_temp(state_id, graph) {
+            Ok(pair) => pair,
+            Err(e) => {
+                steps.push(StepResult {
+                    transition_name: format!("assertions on {}", state.name),
+                    source_name: state.name.clone(),
+                    target_name: state.name.clone(),
+                    exit_code: None,
+                    stdout: String::new(),
+                    stderr: e,
+                    comparison: None,
+                    output_diffs: Vec::new(),
+                    assertion_results: Vec::new(),
+                    passed: false,
+                });
+                passed = false;
+                break;
+            }
+        };
+
+        let assertion_results =
+            run_assertions(&assertions, &work_dir, &state.env, graph, &opts.sandbox);
+        let assertions_passed = assertion_results.iter().all(|a| a.passed);
+        if !assertions_passed {
+            passed = false;
+        }
+
+        // Determine a label — use transition name if available, else state name
+        let label = if i > 0 {
+            let ti = path.steps[i - 1];
+            graph.transitions[ti].name.clone()
+        } else {
+            format!("(root) {}", state.name)
+        };
+
+        steps.push(StepResult {
+            transition_name: label,
+            source_name: state.name.clone(),
+            target_name: state.name.clone(),
+            exit_code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            comparison: None,
+            output_diffs: Vec::new(),
+            assertion_results,
+            passed: assertions_passed,
+        });
+
+        if !opts.keep_temp {
+            drop(temp_dir);
+        }
+
+        if !assertions_passed {
+            break;
+        }
+    }
+
+    PathResult {
+        path_display,
+        steps,
+        passed,
+    }
+}
+
+/// Full and NoCheck modes: execute transitions, compare filesystem, optionally run assertions.
+fn run_path_transitions(
+    graph: &StateGraph,
+    path: &TestPath,
+    path_display: String,
+    opts: &RunOptions,
+) -> PathResult {
+    let mut steps = Vec::new();
+    let mut passed = true;
+    let run_assertions_flag = opts.check_mode == CheckMode::Full;
 
     // For chained paths (A → B → C), the output of one transition
     // becomes the input for the next. Start with the first state.
@@ -121,6 +254,8 @@ fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions) -> PathResul
                         stdout: String::new(),
                         stderr: e,
                         comparison: None,
+                        output_diffs: Vec::new(),
+                        assertion_results: Vec::new(),
                         passed: false,
                     });
                     passed = false;
@@ -141,6 +276,8 @@ fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions) -> PathResul
                             stdout: String::new(),
                             stderr: e,
                             comparison: None,
+                            output_diffs: Vec::new(),
+                            assertion_results: Vec::new(),
                             passed: false,
                         });
                         passed = false;
@@ -150,6 +287,21 @@ fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions) -> PathResul
             }
         };
 
+        // In Full mode, run source state assertions on the first step
+        let mut source_assertion_results = Vec::new();
+        if run_assertions_flag && step_idx == 0 {
+            let source_assertions = graph.assertions_for(source.id);
+            if !source_assertions.is_empty() {
+                source_assertion_results = run_assertions(
+                    &source_assertions,
+                    &work_dir,
+                    &source.env,
+                    graph,
+                    &opts.sandbox,
+                );
+            }
+        }
+
         // Execute the transition command in the sandboxed env
         let step_result = execute_transition(
             transition,
@@ -158,7 +310,20 @@ fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions) -> PathResul
             target,
             graph,
             &opts.sandbox,
+            run_assertions_flag,
         );
+
+        // Merge source assertions into the step result (first step only)
+        let mut step_result = step_result;
+        if !source_assertion_results.is_empty() {
+            let source_failed = source_assertion_results.iter().any(|a| !a.passed);
+            step_result
+                .assertion_results
+                .splice(0..0, source_assertion_results);
+            if source_failed {
+                step_result.passed = false;
+            }
+        }
 
         let step_passed = step_result.passed;
         if !step_passed {
@@ -234,6 +399,214 @@ fn copy_dir_recursive(src: &Utf8Path, dst: &Utf8Path, config_dir: &str) -> std::
     Ok(())
 }
 
+/// Run assertion commands against a state in a working directory.
+fn run_assertions(
+    assertions: &[&Assertion],
+    work_dir: &Utf8Path,
+    state_env: &std::collections::BTreeMap<String, String>,
+    graph: &StateGraph,
+    sandbox: &Sandbox,
+) -> Vec<AssertionResult> {
+    assertions
+        .iter()
+        .map(|assertion| run_single_assertion(assertion, work_dir, state_env, graph, sandbox))
+        .collect()
+}
+
+/// Run a single assertion command and compare output.
+fn run_single_assertion(
+    assertion: &Assertion,
+    work_dir: &Utf8Path,
+    state_env: &std::collections::BTreeMap<String, String>,
+    graph: &StateGraph,
+    sandbox: &Sandbox,
+) -> AssertionResult {
+    let state = &graph.states[assertion.state.0];
+    let bin_dir = state.path.join(&graph.config_dir).join("bin");
+    let base_path = state_env
+        .get("PATH")
+        .map(|s| s.as_str())
+        .unwrap_or("/usr/local/bin:/usr/bin:/bin");
+    let path_env = if bin_dir.exists() {
+        format!("{}:{}", bin_dir, base_path)
+    } else {
+        base_path.to_string()
+    };
+
+    let output = match sandbox {
+        Sandbox::None => build_assertion_command_bare(assertion, work_dir, state_env, &path_env),
+        Sandbox::Flox {
+            flox_bin,
+            project_root,
+        } => build_assertion_command_flox(
+            assertion,
+            work_dir,
+            state_env,
+            &path_env,
+            flox_bin,
+            project_root,
+        ),
+    };
+
+    let output = match output {
+        Some(result) => result,
+        None => {
+            return AssertionResult {
+                name: assertion.name.clone(),
+                passed: false,
+                exit_code: None,
+                stdout_diff: None,
+                stderr_diff: None,
+                error: Some("empty command".into()),
+            };
+        }
+    };
+
+    let output = match output {
+        Ok(o) => o,
+        Err(e) => {
+            return AssertionResult {
+                name: assertion.name.clone(),
+                passed: false,
+                exit_code: None,
+                stdout_diff: None,
+                stderr_diff: None,
+                error: Some(format!("failed to execute command: {e}")),
+            };
+        }
+    };
+
+    let exit_code = output.status.code();
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    // Non-zero exit = failure
+    if !output.status.success() {
+        return AssertionResult {
+            name: assertion.name.clone(),
+            passed: false,
+            exit_code,
+            stdout_diff: None,
+            stderr_diff: None,
+            error: Some(format!(
+                "command exited with {}",
+                exit_code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "signal".into())
+            )),
+        };
+    }
+
+    // Compare stdout/stderr if expected values are specified
+    let stdout_diff = assertion.expected_stdout.as_ref().and_then(|expected| {
+        if *expected != stdout {
+            Some((expected.clone(), stdout.clone()))
+        } else {
+            None
+        }
+    });
+
+    let stderr_diff = assertion.expected_stderr.as_ref().and_then(|expected| {
+        if *expected != stderr {
+            Some((expected.clone(), stderr.clone()))
+        } else {
+            None
+        }
+    });
+
+    let passed = stdout_diff.is_none() && stderr_diff.is_none();
+
+    AssertionResult {
+        name: assertion.name.clone(),
+        passed,
+        exit_code,
+        stdout_diff,
+        stderr_diff,
+        error: None,
+    }
+}
+
+/// Build a bare assertion command (no sandbox).
+fn build_assertion_command_bare(
+    assertion: &Assertion,
+    work_dir: &Utf8Path,
+    state_env: &std::collections::BTreeMap<String, String>,
+    path_env: &str,
+) -> Option<std::io::Result<std::process::Output>> {
+    if assertion.shell {
+        Some(
+            Command::new("sh")
+                .arg("-c")
+                .arg(&assertion.command)
+                .current_dir(work_dir.as_std_path())
+                .env_clear()
+                .envs(state_env.iter())
+                .env("PATH", path_env)
+                .output(),
+        )
+    } else {
+        let parts: Vec<&str> = assertion.command.split_whitespace().collect();
+        if parts.is_empty() {
+            return None;
+        }
+        Some(
+            Command::new(parts[0])
+                .args(&parts[1..])
+                .current_dir(work_dir.as_std_path())
+                .env_clear()
+                .envs(state_env.iter())
+                .env("PATH", path_env)
+                .output(),
+        )
+    }
+}
+
+/// Build an assertion command wrapped in flox activate.
+fn build_assertion_command_flox(
+    assertion: &Assertion,
+    work_dir: &Utf8Path,
+    state_env: &std::collections::BTreeMap<String, String>,
+    path_env: &str,
+    flox_bin: &Utf8Path,
+    project_root: &Utf8Path,
+) -> Option<std::io::Result<std::process::Output>> {
+    if assertion.shell {
+        Some(
+            Command::new(flox_bin.as_str())
+                .args([
+                    "activate",
+                    "-d",
+                    project_root.as_str(),
+                    "--",
+                    "sh",
+                    "-c",
+                    &assertion.command,
+                ])
+                .current_dir(work_dir.as_std_path())
+                .env_clear()
+                .envs(state_env.iter())
+                .env("PATH", path_env)
+                .output(),
+        )
+    } else {
+        let parts: Vec<&str> = assertion.command.split_whitespace().collect();
+        if parts.is_empty() {
+            return None;
+        }
+        let mut args = vec!["activate", "-d", project_root.as_str(), "--"];
+        args.extend(parts);
+        Some(
+            Command::new(flox_bin.as_str())
+                .args(&args)
+                .current_dir(work_dir.as_std_path())
+                .env_clear()
+                .envs(state_env.iter())
+                .env("PATH", path_env)
+                .output(),
+        )
+    }
+}
+
 /// Execute a single transition command and compare the result.
 fn execute_transition(
     transition: &Transition,
@@ -242,6 +615,7 @@ fn execute_transition(
     target: &crate::graph::State,
     graph: &StateGraph,
     sandbox: &Sandbox,
+    run_assertions_flag: bool,
 ) -> StepResult {
     let source_name = graph.states[transition.source.0].name.clone();
     let target_name = target.name.clone();
@@ -287,6 +661,8 @@ fn execute_transition(
                 stdout: String::new(),
                 stderr: "empty command".into(),
                 comparison: None,
+                output_diffs: Vec::new(),
+                assertion_results: Vec::new(),
                 passed: false,
             };
         }
@@ -303,6 +679,8 @@ fn execute_transition(
                 stdout: String::new(),
                 stderr: format!("failed to execute command: {e}"),
                 comparison: None,
+                output_diffs: Vec::new(),
+                assertion_results: Vec::new(),
                 passed: false,
             };
         }
@@ -321,8 +699,29 @@ fn execute_transition(
             stdout,
             stderr,
             comparison: None,
+            output_diffs: Vec::new(),
+            assertion_results: Vec::new(),
             passed: false,
         };
+    }
+
+    // Compare transition stdout/stderr if expected values are specified
+    let mut output_diffs = Vec::new();
+    if let Some(expected) = &transition.expected_stdout {
+        if *expected != stdout {
+            output_diffs.push(OutputDiff::StdoutMismatch {
+                expected: expected.clone(),
+                actual: stdout.clone(),
+            });
+        }
+    }
+    if let Some(expected) = &transition.expected_stderr {
+        if *expected != stderr {
+            output_diffs.push(OutputDiff::StderrMismatch {
+                expected: expected.clone(),
+                actual: stderr.clone(),
+            });
+        }
     }
 
     // Resolve bin_dir from the source state's config dir bin/
@@ -355,10 +754,9 @@ fn execute_transition(
     );
 
     // Compare env vars only when the target state or transition defines env expectations.
-    // If neither the target has env vars nor the transition has env comparators, skip.
     let env_diffs = if !target.env.is_empty() || !transition.env_comparators.is_empty() {
         compare::compare_env(
-            &source_env,
+            source_env,
             &target.env,
             &transition.env_comparators,
             bin_dir_ref,
@@ -372,7 +770,20 @@ fn execute_transition(
     comparison.env_diffs = env_diffs;
     comparison.passed = comparison.passed && comparison.env_diffs.is_empty();
 
-    let passed = comparison.passed;
+    // Run target state assertions in Full mode
+    let assertion_results = if run_assertions_flag {
+        let target_assertions = graph.assertions_for(transition.target);
+        if !target_assertions.is_empty() {
+            run_assertions(&target_assertions, work_dir, &target.env, graph, sandbox)
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    let assertions_passed = assertion_results.iter().all(|a| a.passed);
+    let passed = comparison.passed && output_diffs.is_empty() && assertions_passed;
 
     StepResult {
         transition_name: transition.name.clone(),
@@ -382,6 +793,8 @@ fn execute_transition(
         stdout,
         stderr,
         comparison: Some(comparison),
+        output_diffs,
+        assertion_results,
         passed,
     }
 }

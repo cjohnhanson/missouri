@@ -1,1 +1,5 @@
-{}
+assertions:
+  - name: "warehouse database exists"
+    command: "test -f warehouse.duckdb"
+  - name: "dbt artifacts present"
+    command: "test -d target"

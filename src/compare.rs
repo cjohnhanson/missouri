@@ -52,6 +52,13 @@ pub enum EnvDiff {
     },
 }
 
+/// A difference in command output (stdout or stderr).
+#[derive(Debug)]
+pub enum OutputDiff {
+    StdoutMismatch { expected: String, actual: String },
+    StderrMismatch { expected: String, actual: String },
+}
+
 /// Compare the actual directory tree against the expected directory tree.
 ///
 /// `actual` is the temp dir after the transition command ran.

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Verify data.txt contains expected content
+grep -q "transformed" data.txt

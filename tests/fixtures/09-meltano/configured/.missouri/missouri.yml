@@ -1,1 +1,5 @@
-{}
+assertions:
+  - name: "tap-csv configured"
+    command: "grep -q 'tap-csv' meltano-project/meltano.yml"
+  - name: "target-jsonl configured"
+    command: "grep -q 'target-jsonl' meltano-project/meltano.yml"

@@ -48,6 +48,21 @@ pub struct Transition {
     pub file_comparators: Vec<(Utf8PathBuf, FileComparator)>,
     /// Env var comparison overrides: var name → comparator.
     pub env_comparators: Vec<(String, EnvComparator)>,
+    /// Expected stdout (exact match) when assertions are enabled.
+    pub expected_stdout: Option<String>,
+    /// Expected stderr (exact match) when assertions are enabled.
+    pub expected_stderr: Option<String>,
+}
+
+/// A resolved assertion attached to a state.
+#[derive(Debug)]
+pub struct Assertion {
+    pub name: String,
+    pub command: String,
+    pub shell: bool,
+    pub state: StateId,
+    pub expected_stdout: Option<String>,
+    pub expected_stderr: Option<String>,
 }
 
 /// The complete state graph.
@@ -57,6 +72,8 @@ pub struct StateGraph {
     pub transitions: Vec<Transition>,
     /// Adjacency list: state → outgoing transition indices.
     pub adjacency: HashMap<StateId, Vec<usize>>,
+    /// Assertions attached to states.
+    pub assertions: Vec<Assertion>,
     /// Name of the config directory (e.g., ".missouri").
     pub config_dir: String,
     /// Absolute path to the project root directory.
@@ -147,9 +164,31 @@ impl StateGraph {
                     target: *target_id,
                     file_comparators,
                     env_comparators,
+                    expected_stdout: t.stdout.clone(),
+                    expected_stderr: t.stderr.clone(),
                 });
 
                 adjacency.entry(source_id).or_default().push(transition_idx);
+            }
+        }
+
+        // Phase 4: Resolve assertions
+        let mut assertions: Vec<Assertion> = Vec::new();
+        for (i, cfg) in configs.iter().enumerate() {
+            let state_id = StateId(i);
+            for (a_idx, a) in cfg.assertions.iter().enumerate() {
+                let name = a
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("{}:assert[{}]", states[i].name, a_idx));
+                assertions.push(Assertion {
+                    name,
+                    command: a.command.clone(),
+                    shell: a.shell,
+                    state: state_id,
+                    expected_stdout: a.stdout.clone(),
+                    expected_stderr: a.stderr.clone(),
+                });
             }
         }
 
@@ -159,6 +198,7 @@ impl StateGraph {
             states,
             transitions,
             adjacency,
+            assertions,
             config_dir: config_dir.to_string(),
             root: root.clone(),
             ignore,
@@ -184,6 +224,14 @@ impl StateGraph {
             .get(&state)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
+    }
+
+    /// Get assertions for a state.
+    pub fn assertions_for(&self, state: StateId) -> Vec<&Assertion> {
+        self.assertions
+            .iter()
+            .filter(|a| a.state == state)
+            .collect()
     }
 }
 

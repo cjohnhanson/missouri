@@ -1,3 +1,9 @@
+assertions:
+  - name: "cowsay importable"
+    command: "uv run python -c 'import cowsay; print(cowsay.__version__)'"
+  - name: "cowsay in lockfile"
+    command: "grep -q 'cowsay' uv.lock"
+
 transitions:
   - name: "write and run script"
     command: "write-and-run"

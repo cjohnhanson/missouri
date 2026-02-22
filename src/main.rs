@@ -60,10 +60,19 @@ fn run(args: Args) -> miette::Result<bool> {
             let sandbox =
                 missouri::executor::detect_sandbox(&graph).map_err(|e| miette::miette!("{e}"))?;
 
+            let check_mode = if run_args.check_only {
+                missouri::executor::CheckMode::CheckOnly
+            } else if run_args.no_check {
+                missouri::executor::CheckMode::NoCheck
+            } else {
+                missouri::executor::CheckMode::Full
+            };
+
             let opts = missouri::executor::RunOptions {
                 keep_temp: run_args.keep_temp,
                 verbose: run_args.verbose > 0,
                 sandbox,
+                check_mode,
             };
 
             let results = missouri::executor::run_all_paths(&graph, &paths, &opts);

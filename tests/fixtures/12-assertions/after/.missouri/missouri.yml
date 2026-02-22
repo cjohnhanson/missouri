@@ -1,0 +1,6 @@
+assertions:
+  - name: "check transformed content"
+    command: "cat data.txt"
+    stdout: "transformed\n"
+  - name: "bin script check"
+    command: "check-data"

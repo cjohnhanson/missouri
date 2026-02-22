@@ -1,1 +1,5 @@
-{}
+assertions:
+  - name: "cargo check with serde compiles"
+    command: "cargo check 2>&1"
+  - name: "serde in Cargo.toml"
+    command: "grep -q 'serde' Cargo.toml"

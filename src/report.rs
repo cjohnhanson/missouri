@@ -1,8 +1,8 @@
 use owo_colors::OwoColorize;
 use supports_color::Stream;
 
-use crate::compare::{EnvDiff, FileDiff};
-use crate::executor::{PathResult, StepResult};
+use crate::compare::{EnvDiff, FileDiff, OutputDiff};
+use crate::executor::{AssertionResult, PathResult, StepResult};
 
 fn use_color() -> bool {
     supports_color::on(Stream::Stdout).is_some()
@@ -72,7 +72,7 @@ fn print_step_result(step: &StepResult, verbose: bool) {
 
     if !step.passed {
         // Show command failure info
-        if step.comparison.is_none() {
+        if step.comparison.is_none() && step.assertion_results.is_empty() {
             let exit_str = step
                 .exit_code
                 .map(|c| format!("exit code {c}"))
@@ -85,6 +85,11 @@ fn print_step_result(step: &StepResult, verbose: bool) {
             }
         }
 
+        // Show output diffs
+        for diff in &step.output_diffs {
+            print_output_diff(diff);
+        }
+
         // Show comparison diffs
         if let Some(comparison) = &step.comparison {
             for diff in &comparison.file_diffs {
@@ -94,10 +99,73 @@ fn print_step_result(step: &StepResult, verbose: bool) {
                 print_env_diff(diff);
             }
         }
-    } else if verbose && !step.stdout.is_empty() {
-        for line in step.stdout.lines().take(5) {
-            println!("      {line}");
+
+        // Show assertion results
+        for result in &step.assertion_results {
+            if !result.passed {
+                print_assertion_result(result);
+            }
         }
+    } else if verbose {
+        if !step.stdout.is_empty() {
+            for line in step.stdout.lines().take(5) {
+                println!("      {line}");
+            }
+        }
+        // In verbose mode, show passing assertions too
+        for result in &step.assertion_results {
+            let status = if use_color() {
+                "✓ assert".green().to_string()
+            } else {
+                "✓ assert".into()
+            };
+            println!("      {status}: {}", result.name);
+        }
+    }
+}
+
+fn print_output_diff(diff: &OutputDiff) {
+    match diff {
+        OutputDiff::StdoutMismatch { expected, actual } => {
+            let label = if use_color() {
+                "stdout mismatch".red().to_string()
+            } else {
+                "stdout mismatch".into()
+            };
+            println!("      {label}:");
+            println!("        expected: {expected:?}");
+            println!("        actual:   {actual:?}");
+        }
+        OutputDiff::StderrMismatch { expected, actual } => {
+            let label = if use_color() {
+                "stderr mismatch".red().to_string()
+            } else {
+                "stderr mismatch".into()
+            };
+            println!("      {label}:");
+            println!("        expected: {expected:?}");
+            println!("        actual:   {actual:?}");
+        }
+    }
+}
+
+fn print_assertion_result(result: &AssertionResult) {
+    let label = if use_color() {
+        "✗ assert".red().to_string()
+    } else {
+        "✗ assert".into()
+    };
+    println!("      {label}: {}", result.name);
+    if let Some(error) = &result.error {
+        println!("        {error}");
+    }
+    if let Some((expected, actual)) = &result.stdout_diff {
+        println!("        stdout expected: {expected:?}");
+        println!("        stdout actual:   {actual:?}");
+    }
+    if let Some((expected, actual)) = &result.stderr_diff {
+        println!("        stderr expected: {expected:?}");
+        println!("        stderr actual:   {actual:?}");
     }
 }
 

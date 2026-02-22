@@ -13,6 +13,10 @@ pub struct StateConfig {
     /// Transitions out of this state.
     #[serde(default)]
     pub transitions: Vec<TransitionConfig>,
+
+    /// Assertions to verify properties of this state.
+    #[serde(default)]
+    pub assertions: Vec<AssertionConfig>,
 }
 
 /// A transition from one state to another.
@@ -34,6 +38,12 @@ pub struct TransitionConfig {
     /// Optional comparison overrides.
     #[serde(default)]
     pub comparators: Option<ComparatorsConfig>,
+
+    /// Expected stdout (exact match) when assertions are enabled.
+    pub stdout: Option<String>,
+
+    /// Expected stderr (exact match) when assertions are enabled.
+    pub stderr: Option<String>,
 }
 
 /// Comparison overrides for a transition.
@@ -74,6 +84,26 @@ pub struct EnvComparatorConfig {
     /// If true, exclude this env var from comparison entirely.
     #[serde(default)]
     pub ignore: bool,
+}
+
+/// A side-effect-free assertion command to verify state properties.
+#[derive(Debug, Deserialize)]
+pub struct AssertionConfig {
+    /// Optional human-readable label.
+    pub name: Option<String>,
+
+    /// Command to execute.
+    pub command: String,
+
+    /// Whether to run via `sh -c` (default: true).
+    #[serde(default = "default_true")]
+    pub shell: bool,
+
+    /// Expected stdout (exact match).
+    pub stdout: Option<String>,
+
+    /// Expected stderr (exact match).
+    pub stderr: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -156,5 +186,69 @@ transitions:
         let config = parse_config(yaml).unwrap();
         assert!(config.env.is_empty());
         assert!(config.transitions.is_empty());
+        assert!(config.assertions.is_empty());
+    }
+
+    #[test]
+    fn parse_transition_output_assertions() {
+        let yaml = r#"
+transitions:
+  - name: "echo test"
+    command: "echo hello"
+    target: "../next"
+    stdout: "hello\n"
+    stderr: ""
+"#;
+        let config = parse_config(yaml).unwrap();
+        let t = &config.transitions[0];
+        assert_eq!(t.stdout.as_deref(), Some("hello\n"));
+        assert_eq!(t.stderr.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn parse_transition_no_output_assertions() {
+        let yaml = r#"
+transitions:
+  - command: "do stuff"
+    target: "../next"
+"#;
+        let config = parse_config(yaml).unwrap();
+        let t = &config.transitions[0];
+        assert!(t.stdout.is_none());
+        assert!(t.stderr.is_none());
+    }
+
+    #[test]
+    fn parse_state_assertions() {
+        let yaml = r#"
+assertions:
+  - name: "check output"
+    command: "echo hello"
+    stdout: "hello\n"
+  - command: "validate-data"
+  - name: "check stderr"
+    command: "run-check"
+    stderr: "warning: none\n"
+    shell: false
+"#;
+        let config = parse_config(yaml).unwrap();
+        assert_eq!(config.assertions.len(), 3);
+
+        let a0 = &config.assertions[0];
+        assert_eq!(a0.name.as_deref(), Some("check output"));
+        assert_eq!(a0.command, "echo hello");
+        assert_eq!(a0.stdout.as_deref(), Some("hello\n"));
+        assert!(a0.stderr.is_none());
+        assert!(a0.shell);
+
+        let a1 = &config.assertions[1];
+        assert!(a1.name.is_none());
+        assert_eq!(a1.command, "validate-data");
+        assert!(a1.stdout.is_none());
+        assert!(a1.stderr.is_none());
+
+        let a2 = &config.assertions[2];
+        assert!(!a2.shell);
+        assert_eq!(a2.stderr.as_deref(), Some("warning: none\n"));
     }
 }

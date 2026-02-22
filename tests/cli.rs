@@ -181,3 +181,66 @@ fn cycle_validate_reports_no_roots() {
         .failure()
         .stderr(predicate::str::contains("no entry points"));
 }
+
+// --- 12: Assertions (transition output + state assertions) ---
+
+#[test]
+fn assertions_full_mode_passes() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("12-assertions"))
+        .arg("-v")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS"))
+        .stdout(predicate::str::contains("assert: check original content"))
+        .stdout(predicate::str::contains(
+            "assert: check transformed content",
+        ))
+        .stdout(predicate::str::contains("assert: bin script check"));
+}
+
+#[test]
+fn assertions_check_only_passes() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("12-assertions"))
+        .arg("--check-only")
+        .arg("-v")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS"))
+        .stdout(predicate::str::contains("assert: check original content"))
+        .stdout(predicate::str::contains(
+            "assert: check transformed content",
+        ));
+}
+
+#[test]
+fn assertions_no_check_passes() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("12-assertions"))
+        .arg("--no-check")
+        .arg("-v")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS"))
+        // No assertions should appear
+        .stdout(predicate::str::contains("assert").not());
+}
+
+#[test]
+fn assertions_flags_conflict() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("12-assertions"))
+        .arg("--check-only")
+        .arg("--no-check")
+        .assert()
+        .failure();
+}
