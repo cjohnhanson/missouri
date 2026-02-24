@@ -32,6 +32,7 @@ pub fn record_command(
     sandbox: &crate::executor::Sandbox,
 ) -> std::io::Result<std::process::Output> {
     let mut child = build_recording_command(command, shell, work_dir, env, path_env, sandbox)?;
+    let signal_slot = crate::signal::register_child(child.id());
 
     let start = Instant::now();
     let mut events: Vec<(f64, String)> = Vec::new();
@@ -53,6 +54,7 @@ pub fn record_command(
     let stdout_bytes = stdout_thread.join().unwrap_or_default();
     let stderr_bytes = stderr_thread.join().unwrap_or_default();
     let status = child.wait()?;
+    crate::signal::clear_child(signal_slot);
     let elapsed = start.elapsed().as_secs_f64();
 
     let stdout_str = String::from_utf8_lossy(&stdout_bytes);

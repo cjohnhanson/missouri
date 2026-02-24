@@ -1,6 +1,8 @@
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use camino::{Utf8Path, Utf8PathBuf};
+use rayon::prelude::*;
 use tempfile::TempDir;
 
 use crate::compare::{self, ComparisonResult, OutputDiff};
@@ -91,10 +93,12 @@ fn ensure_managed_flox_env(
 
     if !flox_dir.exists() {
         // Initialize a new flox environment
-        let output = Command::new(flox_bin.as_str())
-            .args(["init", "-d", managed_root.as_str()])
-            .output()
-            .map_err(|e| error::Error::Io(e))?;
+        let output = crate::signal::run_tracked(Command::new(flox_bin.as_str()).args([
+            "init",
+            "-d",
+            managed_root.as_str(),
+        ]))
+        .map_err(|e| error::Error::Io(e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -183,6 +187,7 @@ pub struct StepResult {
     pub output_diffs: Vec<OutputDiff>,
     pub assertion_results: Vec<AssertionResult>,
     pub passed: bool,
+    pub duration: Duration,
 }
 
 /// Result of executing a full test path.
@@ -191,6 +196,7 @@ pub struct PathResult {
     pub path_display: String,
     pub steps: Vec<StepResult>,
     pub passed: bool,
+    pub duration: Duration,
 }
 
 /// Configuration for recording transition output.
@@ -231,8 +237,8 @@ pub fn run_setup_phase(graph: &StateGraph, opts: &RunOptions) -> Vec<SetupResult
         .setup
         .iter()
         .scan(true, |still_passing, cmd| {
-            if !*still_passing {
-                return None; // stop after first failure
+            if !*still_passing || crate::signal::is_interrupted() {
+                return None; // stop after first failure or interruption
             }
             let result = run_single_setup(
                 cmd,
@@ -259,33 +265,35 @@ fn run_single_setup(
 ) -> SetupResult {
     let output = if cmd.shell {
         match sandbox {
-            Sandbox::None => Command::new("sh")
-                .arg("-c")
-                .arg(&cmd.command)
-                .current_dir(work_dir.as_std_path())
-                .env_clear()
-                .envs(project_env.iter())
-                .env("PATH", path_env)
-                .output(),
+            Sandbox::None => crate::signal::run_tracked(
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(&cmd.command)
+                    .current_dir(work_dir.as_std_path())
+                    .env_clear()
+                    .envs(project_env.iter())
+                    .env("PATH", path_env),
+            ),
             Sandbox::Flox {
                 flox_bin,
                 project_root,
-            } => Command::new(flox_bin.as_str())
-                .args([
-                    "activate",
-                    "-d",
-                    project_root.as_str(),
-                    "--",
-                    "sh",
-                    "-c",
-                    &cmd.command,
-                ])
-                .current_dir(work_dir.as_std_path())
-                .env_clear()
-                .envs(project_env.iter())
-                .env("PATH", path_env)
-                .env("SHELL", "/bin/sh")
-                .output(),
+            } => crate::signal::run_tracked(
+                Command::new(flox_bin.as_str())
+                    .args([
+                        "activate",
+                        "-d",
+                        project_root.as_str(),
+                        "--",
+                        "sh",
+                        "-c",
+                        &cmd.command,
+                    ])
+                    .current_dir(work_dir.as_std_path())
+                    .env_clear()
+                    .envs(project_env.iter())
+                    .env("PATH", path_env)
+                    .env("SHELL", "/bin/sh"),
+            ),
         }
     } else {
         let parts: Vec<&str> = cmd.command.split_whitespace().collect();
@@ -299,27 +307,29 @@ fn run_single_setup(
             };
         }
         match sandbox {
-            Sandbox::None => Command::new(parts[0])
-                .args(&parts[1..])
-                .current_dir(work_dir.as_std_path())
-                .env_clear()
-                .envs(project_env.iter())
-                .env("PATH", path_env)
-                .output(),
+            Sandbox::None => crate::signal::run_tracked(
+                Command::new(parts[0])
+                    .args(&parts[1..])
+                    .current_dir(work_dir.as_std_path())
+                    .env_clear()
+                    .envs(project_env.iter())
+                    .env("PATH", path_env),
+            ),
             Sandbox::Flox {
                 flox_bin,
                 project_root,
             } => {
                 let mut args = vec!["activate", "-d", project_root.as_str(), "--"];
                 args.extend(parts);
-                Command::new(flox_bin.as_str())
-                    .args(&args)
-                    .current_dir(work_dir.as_std_path())
-                    .env_clear()
-                    .envs(project_env.iter())
-                    .env("PATH", path_env)
-                    .env("SHELL", "/bin/sh")
-                    .output()
+                crate::signal::run_tracked(
+                    Command::new(flox_bin.as_str())
+                        .args(&args)
+                        .current_dir(work_dir.as_std_path())
+                        .env_clear()
+                        .envs(project_env.iter())
+                        .env("PATH", path_env)
+                        .env("SHELL", "/bin/sh"),
+                )
             }
         }
     };
@@ -345,25 +355,83 @@ fn run_single_setup(
     }
 }
 
-/// Execute all test paths and return results.
-pub fn run_all_paths(graph: &StateGraph, paths: &[TestPath], opts: &RunOptions) -> Vec<PathResult> {
-    paths
-        .iter()
+/// Progress events emitted during test execution.
+pub enum ProgressEvent<'a> {
+    /// A path is about to start executing.
+    PathStarted {
+        index: usize,
+        total: usize,
+        display: &'a str,
+    },
+    /// A path finished executing.
+    PathFinished { index: usize, passed: bool },
+    /// Execution was interrupted by a signal.
+    Interrupted,
+}
+
+/// Execute all test paths in parallel and return results.
+pub fn run_all_paths(
+    graph: &StateGraph,
+    paths: &[TestPath],
+    opts: &RunOptions,
+    on_progress: Option<&(dyn Fn(ProgressEvent) + Sync)>,
+) -> Vec<PathResult> {
+    let total = paths.len();
+
+    let results: Vec<PathResult> = paths
+        .par_iter()
         .enumerate()
-        .map(|(path_idx, path)| run_path(graph, path, opts, path_idx))
-        .collect()
+        .map(|(path_idx, path)| {
+            if crate::signal::is_interrupted() {
+                return PathResult {
+                    path_display: path.display(graph),
+                    steps: Vec::new(),
+                    passed: false,
+                    duration: Duration::ZERO,
+                };
+            }
+
+            let display = path.display(graph);
+            if let Some(cb) = on_progress {
+                cb(ProgressEvent::PathStarted {
+                    index: path_idx,
+                    total,
+                    display: &display,
+                });
+            }
+            let result = run_path(graph, path, opts, path_idx);
+            if let Some(cb) = on_progress {
+                cb(ProgressEvent::PathFinished {
+                    index: path_idx,
+                    passed: result.passed,
+                });
+            }
+            result
+        })
+        .collect();
+
+    if crate::signal::is_interrupted() {
+        if let Some(cb) = on_progress {
+            cb(ProgressEvent::Interrupted);
+        }
+    }
+
+    results
 }
 
 /// Execute a single test path.
 fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions, path_idx: usize) -> PathResult {
     let path_display = path.display(graph);
+    let start = Instant::now();
 
-    match opts.check_mode {
+    let mut result = match opts.check_mode {
         CheckMode::CheckOnly => run_path_check_only(graph, path, path_display, opts),
         CheckMode::Full | CheckMode::NoCheck => {
             run_path_transitions(graph, path, path_display, opts, path_idx)
         }
-    }
+    };
+    result.duration = start.elapsed();
+    result
 }
 
 /// CheckOnly mode: iterate states in path order, run assertions on each.
@@ -386,11 +454,17 @@ fn run_path_check_only(
     }
 
     for (i, &state_id) in state_ids.iter().enumerate() {
+        if crate::signal::is_interrupted() {
+            passed = false;
+            break;
+        }
         let state = &graph.states[state_id.0];
         let assertions = graph.assertions_for(state_id);
         if assertions.is_empty() {
             continue;
         }
+
+        let step_start = Instant::now();
 
         // Copy state to temp dir to run assertions
         let (temp_dir, work_dir) = match copy_state_to_temp(state_id, graph) {
@@ -407,6 +481,7 @@ fn run_path_check_only(
                     output_diffs: Vec::new(),
                     assertion_results: Vec::new(),
                     passed: false,
+                    duration: step_start.elapsed(),
                 });
                 passed = false;
                 break;
@@ -439,6 +514,7 @@ fn run_path_check_only(
             output_diffs: Vec::new(),
             assertion_results,
             passed: assertions_passed,
+            duration: step_start.elapsed(),
         });
 
         if !opts.keep_temp {
@@ -454,6 +530,7 @@ fn run_path_check_only(
         path_display,
         steps,
         passed,
+        duration: Duration::ZERO,
     }
 }
 
@@ -474,6 +551,10 @@ fn run_path_transitions(
     let mut current_dir: Option<(TempDir, Utf8PathBuf)> = None;
 
     for (step_idx, &transition_idx) in path.steps.iter().enumerate() {
+        if crate::signal::is_interrupted() {
+            passed = false;
+            break;
+        }
         let transition = &graph.transitions[transition_idx];
         let source = &graph.states[transition.source.0];
         let target = &graph.states[transition.target.0];
@@ -496,6 +577,7 @@ fn run_path_transitions(
                         output_diffs: Vec::new(),
                         assertion_results: Vec::new(),
                         passed: false,
+                        duration: Duration::ZERO,
                     });
                     passed = false;
                     break;
@@ -518,6 +600,7 @@ fn run_path_transitions(
                             output_diffs: Vec::new(),
                             assertion_results: Vec::new(),
                             passed: false,
+                            duration: Duration::ZERO,
                         });
                         passed = false;
                         break;
@@ -594,6 +677,7 @@ fn run_path_transitions(
         path_display,
         steps,
         passed,
+        duration: Duration::ZERO,
     }
 }
 
@@ -803,30 +887,28 @@ fn build_assertion_command_bare(
     path_env: &str,
 ) -> Option<std::io::Result<std::process::Output>> {
     if assertion.shell {
-        Some(
+        Some(crate::signal::run_tracked(
             Command::new("sh")
                 .arg("-c")
                 .arg(&assertion.command)
                 .current_dir(work_dir.as_std_path())
                 .env_clear()
                 .envs(state_env.iter())
-                .env("PATH", path_env)
-                .output(),
-        )
+                .env("PATH", path_env),
+        ))
     } else {
         let parts: Vec<&str> = assertion.command.split_whitespace().collect();
         if parts.is_empty() {
             return None;
         }
-        Some(
+        Some(crate::signal::run_tracked(
             Command::new(parts[0])
                 .args(&parts[1..])
                 .current_dir(work_dir.as_std_path())
                 .env_clear()
                 .envs(state_env.iter())
-                .env("PATH", path_env)
-                .output(),
-        )
+                .env("PATH", path_env),
+        ))
     }
 }
 
@@ -840,7 +922,7 @@ fn build_assertion_command_flox(
     project_root: &Utf8Path,
 ) -> Option<std::io::Result<std::process::Output>> {
     if assertion.shell {
-        Some(
+        Some(crate::signal::run_tracked(
             Command::new(flox_bin.as_str())
                 .args([
                     "activate",
@@ -855,9 +937,8 @@ fn build_assertion_command_flox(
                 .env_clear()
                 .envs(state_env.iter())
                 .env("PATH", path_env)
-                .env("SHELL", "/bin/sh")
-                .output(),
-        )
+                .env("SHELL", "/bin/sh"),
+        ))
     } else {
         let parts: Vec<&str> = assertion.command.split_whitespace().collect();
         if parts.is_empty() {
@@ -865,16 +946,15 @@ fn build_assertion_command_flox(
         }
         let mut args = vec!["activate", "-d", project_root.as_str(), "--"];
         args.extend(parts);
-        Some(
+        Some(crate::signal::run_tracked(
             Command::new(flox_bin.as_str())
                 .args(&args)
                 .current_dir(work_dir.as_std_path())
                 .env_clear()
                 .envs(state_env.iter())
                 .env("PATH", path_env)
-                .env("SHELL", "/bin/sh")
-                .output(),
-        )
+                .env("SHELL", "/bin/sh"),
+        ))
     }
 }
 
@@ -889,6 +969,7 @@ fn execute_transition(
     run_assertions_flag: bool,
     recording_path: Option<&Utf8PathBuf>,
 ) -> StepResult {
+    let step_start = Instant::now();
     let source_name = graph.states[transition.source.0].name.clone();
     let target_name = target.name.clone();
 
@@ -949,6 +1030,7 @@ fn execute_transition(
                 output_diffs: Vec::new(),
                 assertion_results: Vec::new(),
                 passed: false,
+                duration: step_start.elapsed(),
             };
         }
     };
@@ -967,6 +1049,7 @@ fn execute_transition(
                 output_diffs: Vec::new(),
                 assertion_results: Vec::new(),
                 passed: false,
+                duration: step_start.elapsed(),
             };
         }
     };
@@ -987,6 +1070,7 @@ fn execute_transition(
             output_diffs: Vec::new(),
             assertion_results: Vec::new(),
             passed: false,
+            duration: step_start.elapsed(),
         };
     }
 
@@ -1035,6 +1119,7 @@ fn execute_transition(
         &target.path,
         &transition.file_comparators,
         &comparator_bin_dirs,
+        source_env,
         &graph.config_dir,
         &graph.ignore,
         flox,
@@ -1047,6 +1132,7 @@ fn execute_transition(
             &target.env,
             &transition.env_comparators,
             &comparator_bin_dirs,
+            source_env,
             flox,
         )
     } else {
@@ -1083,6 +1169,7 @@ fn execute_transition(
         output_diffs,
         assertion_results,
         passed,
+        duration: step_start.elapsed(),
     }
 }
 
@@ -1094,30 +1181,28 @@ fn build_command_bare(
     path_env: &str,
 ) -> Option<std::io::Result<std::process::Output>> {
     if transition.shell {
-        Some(
+        Some(crate::signal::run_tracked(
             Command::new("sh")
                 .arg("-c")
                 .arg(&transition.command)
                 .current_dir(work_dir.as_std_path())
                 .env_clear()
                 .envs(source_env.iter())
-                .env("PATH", path_env)
-                .output(),
-        )
+                .env("PATH", path_env),
+        ))
     } else {
         let parts: Vec<&str> = transition.command.split_whitespace().collect();
         if parts.is_empty() {
             return None;
         }
-        Some(
+        Some(crate::signal::run_tracked(
             Command::new(parts[0])
                 .args(&parts[1..])
                 .current_dir(work_dir.as_std_path())
                 .env_clear()
                 .envs(source_env.iter())
-                .env("PATH", path_env)
-                .output(),
-        )
+                .env("PATH", path_env),
+        ))
     }
 }
 
@@ -1135,7 +1220,7 @@ fn build_command_flox(
     project_root: &Utf8Path,
 ) -> Option<std::io::Result<std::process::Output>> {
     if transition.shell {
-        Some(
+        Some(crate::signal::run_tracked(
             Command::new(flox_bin.as_str())
                 .args([
                     "activate",
@@ -1150,9 +1235,8 @@ fn build_command_flox(
                 .env_clear()
                 .envs(source_env.iter())
                 .env("PATH", path_env)
-                .env("SHELL", "/bin/sh")
-                .output(),
-        )
+                .env("SHELL", "/bin/sh"),
+        ))
     } else {
         let parts: Vec<&str> = transition.command.split_whitespace().collect();
         if parts.is_empty() {
@@ -1160,16 +1244,15 @@ fn build_command_flox(
         }
         let mut args = vec!["activate", "-d", project_root.as_str(), "--"];
         args.extend(parts);
-        Some(
+        Some(crate::signal::run_tracked(
             Command::new(flox_bin.as_str())
                 .args(&args)
                 .current_dir(work_dir.as_std_path())
                 .env_clear()
                 .envs(source_env.iter())
                 .env("PATH", path_env)
-                .env("SHELL", "/bin/sh")
-                .output(),
-        )
+                .env("SHELL", "/bin/sh"),
+        ))
     }
 }
 

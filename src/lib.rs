@@ -9,3 +9,4 @@ pub mod paths;
 pub mod recorder;
 pub mod report;
 pub mod scaffold;
+pub mod signal;

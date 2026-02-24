@@ -11,6 +11,19 @@ use cli::{Args, Command, ListKind, ReportFormat, StateCommand};
 fn main() -> ExitCode {
     let args = Args::parse();
 
+    ctrlc::set_handler(|| {
+        if missouri::signal::is_interrupted() {
+            // Second Ctrl+C: force exit
+            missouri::signal::set_force_exit();
+            missouri::signal::kill_all_children(libc::SIGKILL);
+            std::process::exit(130);
+        }
+        // First Ctrl+C: graceful shutdown
+        missouri::signal::set_interrupted();
+        missouri::signal::kill_all_children(libc::SIGTERM);
+    })
+    .ok();
+
     // Set up miette for nice error render
     miette::set_hook(Box::new(|_| {
         Box::new(
@@ -23,7 +36,14 @@ fn main() -> ExitCode {
     }))
     .ok(); // ignore if already set
 
-    match run(args) {
+    let result = run(args);
+
+    // Exit 130 if interrupted (standard SIGINT convention)
+    if missouri::signal::is_interrupted() {
+        return ExitCode::from(130);
+    }
+
+    match result {
         Ok(success) => {
             if success {
                 ExitCode::SUCCESS
@@ -99,7 +119,14 @@ fn run(args: Args) -> miette::Result<bool> {
                 }
             }
 
-            let results = missouri::executor::run_all_paths(&graph, &paths, &opts);
+            let progress = missouri::report::ProgressReporter::new();
+            let results = missouri::executor::run_all_paths(
+                &graph,
+                &paths,
+                &opts,
+                Some(&|event| progress.on_event(event)),
+            );
+            progress.finish();
             let all_passed = missouri::report::print_results(&results, run_args.verbose > 0);
 
             // Write results.json if recording
