@@ -1,0 +1,7 @@
+#!/bin/sh
+# Comparator that verifies it can see the project env var under flox.
+if [ "$MAGIC_TOKEN" != "comparator-sees-this" ]; then
+    echo "MAGIC_TOKEN not set or wrong: got '${MAGIC_TOKEN}'" >&2
+    exit 1
+fi
+diff "$1" "$2"

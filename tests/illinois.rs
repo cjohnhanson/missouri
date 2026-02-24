@@ -270,6 +270,19 @@ fn illinois_custom_comparator_passes() {
 }
 
 #[test]
+fn illinois_comparator_env_passes() {
+    let tmp = setup_illinois_scenario("16-comparator-env", 0);
+    let output = run_illinois(&tmp);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "illinois failed:\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("PASS"), "expected PASS in output: {stdout}");
+}
+
+#[test]
 fn illinois_env_vars_passes() {
     let tmp = setup_illinois_scenario("05-env-vars", 0);
     let output = run_illinois(&tmp);
@@ -366,6 +379,23 @@ fn illinois_cargo_flox_passes() {
         return;
     }
     let tmp = setup_illinois_flox_scenario("11-cargo", 0);
+    let output = run_illinois(&tmp);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "illinois failed:\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("PASS"), "expected PASS in output: {stdout}");
+}
+
+#[test]
+fn illinois_comparator_env_flox_passes() {
+    if find_flox().is_none() {
+        eprintln!("skipping illinois_comparator_env_flox_passes: flox not found on PATH");
+        return;
+    }
+    let tmp = setup_illinois_flox_scenario("17-comparator-env-flox", 0);
     let output = run_illinois(&tmp);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(

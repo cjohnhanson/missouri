@@ -1,0 +1,10 @@
+#!/bin/sh
+# Comparator that verifies it can see the project env var.
+# The actual file comparison is secondary — the point is that
+# MAGIC_TOKEN must be set in the comparator's environment.
+if [ "$MAGIC_TOKEN" != "comparator-sees-this" ]; then
+    echo "MAGIC_TOKEN not set or wrong: got '${MAGIC_TOKEN}'" >&2
+    exit 1
+fi
+# Also do a basic content check
+diff "$1" "$2"

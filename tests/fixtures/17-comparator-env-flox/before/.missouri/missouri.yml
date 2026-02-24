@@ -1,0 +1,8 @@
+transitions:
+  - name: "write data"
+    command: "echo hello > data.txt"
+    target: "../after"
+    comparators:
+      files:
+        - path: "data.txt"
+          command: "check-env"
