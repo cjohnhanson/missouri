@@ -1,0 +1,4 @@
+transitions:
+  - name: "append world"
+    command: "printf 'hello world\n' > data.txt"
+    target: "../state-b"

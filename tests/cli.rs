@@ -864,3 +864,56 @@ fn serve_no_runs_errors() {
         .failure()
         .stderr(predicate::str::contains("no recorded runs"));
 }
+
+// --- 18: Root-level missouri.yml with test_dir ---
+
+#[test]
+fn test_dir_run_passes() {
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("18-test-dir"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS"));
+}
+
+#[test]
+fn test_dir_list_states() {
+    missouri()
+        .arg("list")
+        .arg("-d")
+        .arg(fixture("18-test-dir"))
+        .arg("--show")
+        .arg("states")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state-a"))
+        .stdout(predicate::str::contains("state-b"));
+}
+
+#[test]
+fn test_dir_list_paths() {
+    missouri()
+        .arg("list")
+        .arg("-d")
+        .arg(fixture("18-test-dir"))
+        .arg("--show")
+        .arg("paths")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state-a"))
+        .stdout(predicate::str::contains("state-b"));
+}
+
+#[test]
+fn test_dir_dash_c_works() {
+    // -C should work with root-level missouri.yml
+    missouri()
+        .arg("-C")
+        .arg(fixture("18-test-dir"))
+        .arg("run")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS"));
+}

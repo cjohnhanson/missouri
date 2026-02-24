@@ -113,17 +113,22 @@ pub struct StateGraph {
 impl StateGraph {
     /// Discover all states under `root` and build the graph.
     /// `config_dir` is the name of the config directory (e.g., ".missouri").
+    ///
+    /// Config is loaded from one of two locations (checked in order):
+    /// 1. `<root>/missouri.yml` — root-level config, may have `test_dir` pointing elsewhere
+    /// 2. `<root>/<config_dir>/missouri.yml` — config-dir-level config (original behavior)
     pub fn discover(root: &Utf8Path, config_dir: &str) -> Result<Self> {
         let root = root.canonicalize_utf8().map_err(|e| Error::Io(e))?;
 
-        // Phase 0: Load project-level config (optional)
-        let (project_env, setup, project_bin, sandbox_config) =
+        // Phase 0: Load project-level config
+        // Check root-level missouri.yml first, then fall back to <config_dir>/missouri.yml
+        let (project_env, setup, project_bin, sandbox_config, state_root) =
             load_project_config(&root, config_dir)?;
 
         // Phase 1: Find all directories containing <config_dir>/missouri.yml
-        // (excludes the root itself — root config is project-level, not a state)
+        // (excludes the state root itself — root config is project-level, not a state)
         let mut state_paths: Vec<Utf8PathBuf> = Vec::new();
-        collect_states(&root, config_dir, &root, &mut state_paths)?;
+        collect_states(&state_root, config_dir, &state_root, &mut state_paths)?;
         state_paths.sort();
 
         // Phase 2: Build state nodes
@@ -230,7 +235,7 @@ impl StateGraph {
             }
         }
 
-        let ignore = load_ignore_patterns(&root, config_dir)?;
+        let ignore = load_ignore_patterns(&state_root, config_dir)?;
 
         Ok(StateGraph {
             states,
@@ -238,7 +243,7 @@ impl StateGraph {
             adjacency,
             assertions,
             config_dir: config_dir.to_string(),
-            root: root.clone(),
+            root: state_root,
             ignore,
             project_env,
             setup,
@@ -300,10 +305,13 @@ fn load_ignore_patterns(root: &Utf8Path, config_dir: &str) -> Result<Gitignore> 
     })
 }
 
-/// Load project-level config from `<root>/<config_dir>/missouri.yml`.
+/// Load project-level config, checking two locations in order:
+/// 1. `<root>/missouri.yml` — root-level config (may include `test_dir`)
+/// 2. `<root>/<config_dir>/missouri.yml` — config-dir-level config
 ///
-/// Returns (project_env, setup_commands, project_bin, sandbox_config).
-/// All are empty/None if the file doesn't exist.
+/// Returns (project_env, setup_commands, project_bin, sandbox_config, state_root).
+/// `state_root` is the directory where state discovery should start (may differ
+/// from `root` if `test_dir` is set in a root-level missouri.yml).
 fn load_project_config(
     root: &Utf8Path,
     config_dir: &str,
@@ -312,19 +320,36 @@ fn load_project_config(
     Vec<SetupCommand>,
     Option<Utf8PathBuf>,
     SandboxConfig,
+    Utf8PathBuf,
 )> {
-    let config_path = root.join(config_dir).join("missouri.yml");
+    let root_yml = root.join("missouri.yml");
+    let config_dir_yml = root.join(config_dir).join("missouri.yml");
 
-    let (project_env, setup, sandbox_config) = if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).map_err(|e| Error::ConfigRead {
-            path: config_path.clone(),
+    let (config_path, cfg) = if root_yml.exists() {
+        let content = std::fs::read_to_string(&root_yml).map_err(|e| Error::ConfigRead {
+            path: root_yml.clone(),
             source: e,
         })?;
         let cfg = config::parse_project_config(&content).map_err(|e| Error::ConfigParse {
-            path: config_path,
+            path: root_yml.clone(),
             source: e,
         })?;
+        (root_yml, Some(cfg))
+    } else if config_dir_yml.exists() {
+        let content = std::fs::read_to_string(&config_dir_yml).map_err(|e| Error::ConfigRead {
+            path: config_dir_yml.clone(),
+            source: e,
+        })?;
+        let cfg = config::parse_project_config(&content).map_err(|e| Error::ConfigParse {
+            path: config_dir_yml.clone(),
+            source: e,
+        })?;
+        (config_dir_yml, Some(cfg))
+    } else {
+        (config_dir_yml, None)
+    };
 
+    let (project_env, setup, sandbox_config, state_root) = if let Some(cfg) = cfg {
         let setup_commands: Vec<SetupCommand> = cfg
             .setup
             .iter()
@@ -337,7 +362,6 @@ fn load_project_config(
             .collect();
 
         let sandbox = if let Some(flox_cfg) = cfg.flox {
-            // Resolve manifest path relative to project root
             SandboxConfig::Manifest(root.join(&flox_cfg.manifest))
         } else if !cfg.packages.is_empty() {
             SandboxConfig::Packages(cfg.packages)
@@ -345,19 +369,45 @@ fn load_project_config(
             SandboxConfig::None
         };
 
-        (cfg.env, setup_commands, sandbox)
+        // If test_dir is set, resolve it relative to root
+        let state_root = if let Some(test_dir) = cfg.test_dir {
+            root.join(&test_dir)
+                .canonicalize_utf8()
+                .map_err(|_| Error::ConfigRead {
+                    path: config_path,
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("test_dir not found: {test_dir}"),
+                    ),
+                })?
+        } else {
+            root.to_owned()
+        };
+
+        (cfg.env, setup_commands, sandbox, state_root)
     } else {
-        (BTreeMap::new(), Vec::new(), SandboxConfig::None)
+        (
+            BTreeMap::new(),
+            Vec::new(),
+            SandboxConfig::None,
+            root.to_owned(),
+        )
     };
 
-    let bin_path = root.join(config_dir).join("bin");
+    // Look for bin/ in both the state_root's config_dir and the root's config_dir
+    let bin_path = state_root.join(config_dir).join("bin");
     let project_bin = if bin_path.exists() {
         Some(bin_path)
     } else {
-        None
+        let root_bin = root.join(config_dir).join("bin");
+        if root_bin.exists() {
+            Some(root_bin)
+        } else {
+            None
+        }
     };
 
-    Ok((project_env, setup, project_bin, sandbox_config))
+    Ok((project_env, setup, project_bin, sandbox_config, state_root))
 }
 
 /// Recursively find directories containing `<config_dir>/missouri.yml`.
@@ -704,5 +754,326 @@ transitions:
         let graph = StateGraph::discover(root, ".missouri").unwrap();
         assert!(graph.setup.is_empty());
         assert!(graph.project_bin.is_none());
+    }
+
+    #[test]
+    fn discover_root_level_missouri_yml() {
+        // Root-level missouri.yml (no test_dir) — project config lives at root
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        fs::write(
+            root.join("missouri.yml"),
+            r#"
+env:
+  FROM_ROOT: "yes"
+"#,
+        )
+        .unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.states.len(), 2);
+        assert_eq!(graph.project_env["FROM_ROOT"], "yes");
+        // States should inherit the root-level env
+        let state_a = graph.states.iter().find(|s| s.name == "a").unwrap();
+        assert_eq!(state_a.env["FROM_ROOT"], "yes");
+    }
+
+    #[test]
+    fn discover_root_level_overrides_config_dir() {
+        // Both root-level missouri.yml and .missouri/missouri.yml exist.
+        // Root-level should win.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        fs::write(
+            root.join("missouri.yml"),
+            r#"
+env:
+  SOURCE: root_level
+"#,
+        )
+        .unwrap();
+
+        let config_dir = root.join(".missouri");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(
+            config_dir.join("missouri.yml"),
+            r#"
+env:
+  SOURCE: config_dir_level
+"#,
+        )
+        .unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        // Root-level missouri.yml takes precedence
+        assert_eq!(graph.project_env["SOURCE"], "root_level");
+    }
+
+    #[test]
+    fn discover_test_dir_redirects_state_discovery() {
+        // Root has missouri.yml with test_dir pointing to a subdirectory.
+        // States live in that subdirectory, not the root.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let tests_dir = root.join("tests").join("smoke");
+        fs::create_dir_all(&tests_dir).unwrap();
+
+        fs::write(
+            root.join("missouri.yml"),
+            r#"
+test_dir: tests/smoke
+env:
+  FROM_ROOT: "yes"
+"#,
+        )
+        .unwrap();
+
+        // States live under tests/smoke/
+        make_state(
+            &tests_dir,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(&tests_dir, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.states.len(), 2);
+        assert_eq!(graph.project_env["FROM_ROOT"], "yes");
+        // graph.root should be the resolved test_dir, not the original root
+        assert!(
+            graph.root.as_str().ends_with("tests/smoke"),
+            "graph.root should be the test_dir: {}",
+            graph.root
+        );
+    }
+
+    #[test]
+    fn discover_test_dir_with_config_dir_ignore() {
+        // test_dir has its own .missouri/ignore that should be used
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let tests_dir = root.join("tests");
+        fs::create_dir_all(&tests_dir).unwrap();
+
+        fs::write(root.join("missouri.yml"), "test_dir: tests").unwrap();
+
+        // Create .missouri/ignore in the test_dir
+        let test_config = tests_dir.join(".missouri");
+        fs::create_dir_all(&test_config).unwrap();
+        fs::write(test_config.join("ignore"), "*.log\n").unwrap();
+
+        make_state(
+            &tests_dir,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(&tests_dir, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.states.len(), 2);
+        // Verify that ignore patterns from test_dir are loaded.
+        // The gitignore root is the canonicalized state_root, so use a
+        // path relative to graph.root for the match check.
+        let check_path = graph.root.join("a/foo.log");
+        let matched = graph
+            .ignore
+            .matched_path_or_any_parents(check_path.as_std_path(), false);
+        assert!(matched.is_ignore(), "*.log should be ignored");
+    }
+
+    #[test]
+    fn discover_test_dir_missing_errors() {
+        // test_dir points to a nonexistent directory — should error
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        fs::write(root.join("missouri.yml"), "test_dir: nonexistent/path").unwrap();
+
+        let result = StateGraph::discover(root, ".missouri");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn discover_test_dir_env_merges_into_states() {
+        // Root missouri.yml has env + test_dir. States in test_dir
+        // should inherit the root-level env.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let tests_dir = root.join("suite");
+        fs::create_dir_all(&tests_dir).unwrap();
+
+        fs::write(
+            root.join("missouri.yml"),
+            r#"
+test_dir: suite
+env:
+  PROJECT_VAR: from_project
+"#,
+        )
+        .unwrap();
+
+        make_state(
+            &tests_dir,
+            "a",
+            r#"
+env:
+  STATE_VAR: from_state
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(&tests_dir, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        let state_a = graph.states.iter().find(|s| s.name == "a").unwrap();
+        assert_eq!(state_a.env["PROJECT_VAR"], "from_project");
+        assert_eq!(state_a.env["STATE_VAR"], "from_state");
+    }
+
+    #[test]
+    fn discover_test_dir_setup_commands() {
+        // Root missouri.yml has setup + test_dir. Setup should be loaded.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let tests_dir = root.join("tests");
+        fs::create_dir_all(&tests_dir).unwrap();
+
+        fs::write(
+            root.join("missouri.yml"),
+            r#"
+test_dir: tests
+setup:
+  - name: "init db"
+    command: "db-init"
+"#,
+        )
+        .unwrap();
+
+        make_state(
+            &tests_dir,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(&tests_dir, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.setup.len(), 1);
+        assert_eq!(graph.setup[0].name, "init db");
+    }
+
+    #[test]
+    fn discover_test_dir_bin_in_test_dir() {
+        // bin/ exists in test_dir's .missouri — should be found
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let tests_dir = root.join("tests");
+        fs::create_dir_all(&tests_dir).unwrap();
+
+        fs::write(root.join("missouri.yml"), "test_dir: tests").unwrap();
+
+        let test_bin = tests_dir.join(".missouri").join("bin");
+        fs::create_dir_all(&test_bin).unwrap();
+
+        make_state(
+            &tests_dir,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(&tests_dir, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(graph.project_bin.is_some());
+        assert!(
+            graph
+                .project_bin
+                .as_ref()
+                .unwrap()
+                .as_str()
+                .contains("tests/.missouri/bin"),
+            "bin should be in test_dir: {:?}",
+            graph.project_bin
+        );
+    }
+
+    #[test]
+    fn discover_test_dir_bin_falls_back_to_root() {
+        // bin/ exists in root's .missouri but not in test_dir — should fall back
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let tests_dir = root.join("tests");
+        fs::create_dir_all(&tests_dir).unwrap();
+
+        fs::write(root.join("missouri.yml"), "test_dir: tests").unwrap();
+
+        let root_bin = root.join(".missouri").join("bin");
+        fs::create_dir_all(&root_bin).unwrap();
+
+        make_state(
+            &tests_dir,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(&tests_dir, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(graph.project_bin.is_some());
+        // Should find root's bin, not test_dir's
+        let bin_str = graph.project_bin.as_ref().unwrap().as_str();
+        assert!(
+            !bin_str.contains("tests/.missouri/bin"),
+            "bin should be root's, not test_dir's: {bin_str}"
+        );
+        assert!(bin_str.ends_with(".missouri/bin"));
     }
 }

@@ -113,6 +113,11 @@ pub struct AssertionConfig {
 /// Project-level missouri.yml structure (at the root config dir).
 #[derive(Debug, Deserialize)]
 pub struct ProjectConfig {
+    /// Directory containing test states (relative to this config file).
+    /// When set, state discovery starts from this directory instead of
+    /// the directory containing the config.
+    pub test_dir: Option<Utf8PathBuf>,
+
     /// Project-level environment variables (inherited by all states).
     #[serde(default)]
     pub env: BTreeMap<String, String>,
@@ -410,5 +415,27 @@ flox:
         let config = parse_project_config(yaml).unwrap();
         assert!(config.packages.is_empty());
         assert!(config.flox.is_none());
+    }
+
+    #[test]
+    fn parse_project_config_test_dir() {
+        let yaml = r#"
+test_dir: tests/smoke
+env:
+  FOO: bar
+"#;
+        let config = parse_project_config(yaml).unwrap();
+        assert_eq!(config.test_dir.as_deref(), Some("tests/smoke".into()));
+        assert_eq!(config.env["FOO"], "bar");
+    }
+
+    #[test]
+    fn parse_project_config_no_test_dir() {
+        let yaml = r#"
+env:
+  FOO: bar
+"#;
+        let config = parse_project_config(yaml).unwrap();
+        assert!(config.test_dir.is_none());
     }
 }
