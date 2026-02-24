@@ -1,7 +1,6 @@
 ---
 title: "AGENTS.md with symlinked CLAUDE.md"
 status: discovery
-priority: 3
 assignee:
 labels: [admin]
 depends_on: []

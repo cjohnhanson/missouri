@@ -1,7 +1,6 @@
 ---
 title: "Cargo.toml metadata for crates.io"
 status: discovery
-priority: 3
 assignee:
 labels: [admin]
 depends_on: []

@@ -1,7 +1,6 @@
 ---
 title: "PR templates"
 status: discovery
-priority: 3
 assignee:
 labels: [admin]
 depends_on: []

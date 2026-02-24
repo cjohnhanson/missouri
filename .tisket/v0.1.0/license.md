@@ -1,7 +1,6 @@
 ---
 title: "License"
 status: discovery
-priority: 3
 assignee:
 labels: [admin]
 depends_on: []

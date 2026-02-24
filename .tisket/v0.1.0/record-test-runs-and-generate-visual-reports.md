@@ -1,7 +1,6 @@
 ---
 title: "Record test runs and generate reports"
 status: done
-priority: 2
 assignee:
 labels: [feature, recording, reporting]
 depends_on: []
