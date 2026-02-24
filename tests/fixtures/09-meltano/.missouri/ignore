@@ -1,5 +1,6 @@
 # Machine-specific, rebuilt by uv
 .venv/
+uv.lock
 
 # Meltano internal state (system DB, plugin venvs, lock files)
 .meltano/
