@@ -1,6 +1,6 @@
 ---
 title: "Comparators don't receive project env vars"
-status: backlog
+status: done
 priority:
 assignee:
 labels: [bug]

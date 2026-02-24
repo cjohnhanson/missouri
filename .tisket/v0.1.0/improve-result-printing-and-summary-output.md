@@ -1,6 +1,6 @@
 ---
 title: "Improve result printing and summary output"
-status: discovery
+status: done
 assignee:
 labels: [enhancement, reporting]
 depends_on: []

@@ -1,6 +1,6 @@
 ---
 title: "Better assertion visibility in run output"
-status: discovery
+status: done
 assignee:
 labels: [enhancement, reporting]
 depends_on: []
