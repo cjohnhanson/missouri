@@ -242,7 +242,7 @@ pub fn run_setup_phase(graph: &StateGraph, opts: &RunOptions) -> Vec<SetupResult
             }
             let result = run_single_setup(
                 cmd,
-                &graph.root,
+                &graph.project_root,
                 &path_env,
                 &graph.project_env,
                 &opts.sandbox,

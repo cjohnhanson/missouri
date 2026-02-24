@@ -96,8 +96,12 @@ pub struct StateGraph {
     pub assertions: Vec<Assertion>,
     /// Name of the config directory (e.g., ".missouri").
     pub config_dir: String,
-    /// Absolute path to the project root directory.
+    /// Absolute path to the state root directory (where states are discovered).
+    /// When `test_dir` is set, this is the resolved test directory.
     pub root: Utf8PathBuf,
+    /// Absolute path to the directory containing the missouri.yml config.
+    /// Setup commands run from here. Same as `root` when there's no `test_dir`.
+    pub project_root: Utf8PathBuf,
     /// Project-level ignore patterns from `<config_dir>/ignore` (gitignore syntax).
     pub ignore: Gitignore,
     /// Project-level env vars (before state-level merging).
@@ -244,6 +248,7 @@ impl StateGraph {
             assertions,
             config_dir: config_dir.to_string(),
             root: state_root,
+            project_root: root.to_owned(),
             ignore,
             project_env,
             setup,
@@ -1000,6 +1005,34 @@ transitions:
         let graph = StateGraph::discover(root, ".missouri").unwrap();
         assert_eq!(graph.setup.len(), 1);
         assert_eq!(graph.setup[0].name, "init db");
+        // project_root should be the original root, not test_dir
+        assert_eq!(graph.project_root, root.canonicalize_utf8().unwrap());
+        assert!(
+            graph.root.as_str().ends_with("tests"),
+            "graph.root should be test_dir: {}",
+            graph.root
+        );
+    }
+
+    #[test]
+    fn discover_project_root_equals_root_without_test_dir() {
+        // Without test_dir, project_root and root should be the same.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.root, graph.project_root);
     }
 
     #[test]
