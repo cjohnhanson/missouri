@@ -12,11 +12,10 @@ impl DocPage {
     /// Return the markdown content with the metadata comment stripped.
     pub fn content(&self) -> &str {
         let md = self.raw;
-        if let Some(start) = md.find("<!-- metadata") {
-            if let Some(end) = md[start..].find("-->") {
+        if let Some(start) = md.find("<!-- metadata")
+            && let Some(end) = md[start..].find("-->") {
                 return md[start + end + 3..].trim_start_matches('\n');
             }
-        }
         md
     }
 }

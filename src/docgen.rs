@@ -61,14 +61,13 @@ pub fn render_markdown(graph: &StateGraph, path: &TestPath) -> String {
         out.push_str(&format!("$ {}\n", t.command));
         out.push_str("```\n");
 
-        if let Some(stdout) = &t.expected_stdout {
-            if !stdout.is_empty() {
+        if let Some(stdout) = &t.expected_stdout
+            && !stdout.is_empty() {
                 out.push('\n');
                 out.push_str("```\n");
                 out.push_str(stdout);
                 out.push_str("```\n");
             }
-        }
 
         out.push('\n');
     }

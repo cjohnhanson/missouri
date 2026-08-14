@@ -285,7 +285,7 @@ fn print_summary(out: &mut impl Write, results: &[PathResult]) {
             )
         })
         .collect();
-    transitions.sort_by(|a, b| b.3.cmp(&a.3));
+    transitions.sort_by_key(|t| std::cmp::Reverse(t.3));
 
     if transitions.len() > 1 {
         writeln!(out).ok();
@@ -302,10 +302,10 @@ fn print_summary(out: &mut impl Write, results: &[PathResult]) {
         .flat_map(|s| &s.assertion_results)
         .map(|a| (a.name.as_str(), a.duration))
         .collect();
-    assertions.sort_by(|a, b| b.1.cmp(&a.1));
+    assertions.sort_by_key(|a| std::cmp::Reverse(a.1));
 
-    if let Some((_, top_dur)) = assertions.first() {
-        if *top_dur > Duration::from_secs(1) {
+    if let Some((_, top_dur)) = assertions.first()
+        && *top_dur > Duration::from_secs(1) {
             writeln!(out).ok();
             writeln!(out, "Slowest assertions:").ok();
             for (name, dur) in assertions.iter().take(5) {
@@ -314,7 +314,6 @@ fn print_summary(out: &mut impl Write, results: &[PathResult]) {
                 }
             }
         }
-    }
 }
 
 fn fmt_duration(d: Duration) -> String {

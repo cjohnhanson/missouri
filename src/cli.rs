@@ -283,13 +283,13 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             use clap::CommandFactory as _;
             std::fs::create_dir_all(&dir).into_diagnostic()?;
             crate::mangen::write_man_pages(&Args::command(), dir.as_std_path()).into_diagnostic()?;
-            return Ok(true);
+            Ok(true)
         }
 
         Command::GenCompletions { shell } => {
             use clap::CommandFactory as _;
             clap_complete::generate(shell, &mut Args::command(), "missouri", &mut std::io::stdout());
-            return Ok(true);
+            Ok(true)
         }
 
         Command::Run(run_args) => {
@@ -598,12 +598,10 @@ fn run_agent_eval(eval_args: &AgentEvalArgs, config_dir: &str) -> miette::Result
 
     let defaults = crate::agent_cli::AgentDefaults {
         model: "sonnet".to_string(),
-        system_prompt: format!(
-            "You are an evaluation agent for missouri. Your job is to evaluate \
+        system_prompt: "You are an evaluation agent for missouri. Your job is to evaluate \
              the state described in the prompt, then call `missouri agent pass` \
              or `missouri agent fail <details>`. Do not stop without rendering \
-             a verdict."
-        ),
+             a verdict.".to_string(),
         initial_prompt: initial_prompt.clone(),
         extra_args: vec![],
         allowed_tools: vec![

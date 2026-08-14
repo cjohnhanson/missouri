@@ -774,9 +774,7 @@ pub fn start_mitmdump_replay(
         .map(|dir| camino::Utf8PathBuf::from(dir).join("mitmdump"))
         .find(|p| p.exists())
         .ok_or_else(|| {
-            format!(
-                "mitmdump not found on PATH — add mitmproxy to packages or install it manually"
-            )
+            "mitmdump not found on PATH — add mitmproxy to packages or install it manually".to_string()
         })?;
 
     let mut child = std::process::Command::new(mitmdump_bin.as_str())
@@ -974,14 +972,12 @@ pub fn start_service(
     while Instant::now() < deadline {
         match lines.next() {
             Some(Ok(line)) => {
-                if let Some(caps) = pattern.captures(&line) {
-                    if let Some(m) = caps.get(1) {
-                        if let Ok(p) = m.as_str().parse::<u16>() {
+                if let Some(caps) = pattern.captures(&line)
+                    && let Some(m) = caps.get(1)
+                        && let Ok(p) = m.as_str().parse::<u16>() {
                             port = Some(p);
                             break;
                         }
-                    }
-                }
             }
             Some(Err(e)) => {
                 return Err(format!("failed to read service stderr: {e}"));
@@ -1634,12 +1630,12 @@ fn copy_state_to_temp(
 
     // Restore dot-<name>/ → .<name>/ for each matching directory in config dir.
     let config_path = state.path.join(&graph.config_dir);
-    if config_path.exists() {
-        if let Ok(entries) = std::fs::read_dir(&config_path) {
+    if config_path.exists()
+        && let Ok(entries) = std::fs::read_dir(&config_path) {
             for entry in entries.flatten() {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
-                if name_str.starts_with("dot-") && entry.file_type().map_or(false, |ft| ft.is_dir()) {
+                if name_str.starts_with("dot-") && entry.file_type().is_ok_and(|ft| ft.is_dir()) {
                     let real_name = format!(".{}", &name_str[4..]);
                     let dst = temp_path.join(&real_name);
                     std::fs::create_dir_all(&dst)
@@ -1651,7 +1647,6 @@ fn copy_state_to_temp(
                 }
             }
         }
-    }
 
     Ok((temp_dir, temp_path))
 }
@@ -3055,7 +3050,7 @@ time.sleep(300)
     fn build_service_env_single() {
         let env = build_service_env(&[8080]);
         assert_eq!(env.get("PORT").map(|s| s.as_str()), Some("8080"));
-        assert!(env.get("PORT_0").is_none());
+        assert!(!env.contains_key("PORT_0"));
     }
 
     #[test]
