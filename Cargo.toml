@@ -3,6 +3,8 @@ name = "missouri"
 version = "0.2.0"
 edition = "2024"
 description = "Show-me-state: e2e testing as directed graphs of filesystem states"
+license = "MIT"
+repository = "https://github.com/cjohnhanson/missouri"
 
 [dependencies]
 camino = { version = "1", features = ["serde1"] }
