@@ -1,0 +1,10 @@
+transitions:
+  - name: "echo runs inside linux container"
+    command: "echo hello-from-container"
+    target: ../echoed
+    stdout: "hello-from-container\n"
+
+  - name: "uname proves linux execution"
+    command: "uname -s"
+    target: ../uname-checked
+    stdout: "Linux\n"

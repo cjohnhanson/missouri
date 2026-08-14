@@ -7,3 +7,13 @@ uv.lock
 
 # Empty plugin type dirs created non-deterministically by meltano
 meltano-project/plugins/utilities/
+
+# uv scaffolding drifts by uv version (src/ vs flat layout, the authors
+# field from git config, the python-version-dependent requires-python).
+# The assertions verify the real behavior, so uv's boilerplate is not
+# compared byte-for-byte.
+pyproject.toml
+main.py
+.python-version
+.gitignore
+src/

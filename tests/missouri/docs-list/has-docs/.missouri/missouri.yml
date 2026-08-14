@@ -1,0 +1,9 @@
+assertions:
+  - name: "missouri docs lists available documentation"
+    command: "missouri docs | grep -q 'What is Missouri' && missouri docs | grep -q 'CLI Reference'"
+
+  - name: "missouri docs what-is-missouri prints content"
+    command: "missouri docs what-is-missouri | grep -q 'filesystem state'"
+
+  - name: "missouri docs search finds matches"
+    command: "missouri docs search transition | grep -q 'Writing Tests'"

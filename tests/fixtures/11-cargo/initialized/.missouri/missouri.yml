@@ -6,3 +6,7 @@ transitions:
   - name: "cargo add serde"
     command: "cargo add serde@1.0.228 --features derive"
     target: "../dep-added"
+    comparators:
+      files:
+        - path: "Cargo.lock"
+          ignore: true

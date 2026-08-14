@@ -1,2 +1,4 @@
-flox:
-  manifest: "manifest.toml"
+packages:
+  - python3
+  - uv
+  - duckdb

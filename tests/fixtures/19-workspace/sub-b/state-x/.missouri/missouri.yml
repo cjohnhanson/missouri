@@ -1,0 +1,4 @@
+transitions:
+  - name: "create output"
+    command: "echo world > output.txt"
+    target: "../state-y"

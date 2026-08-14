@@ -1,22 +1,25 @@
 [package]
 name = "missouri"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Show-me-state: e2e testing as directed graphs of filesystem states"
 
 [dependencies]
 camino = { version = "1", features = ["serde1"] }
-console = "0.15"
+bollard = "0.18"
+futures-util = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 ctrlc = "3.4"
 clap = { version = "4", features = ["derive", "env", "unicode", "wrap_help"] }
+clap_complete = "4"
+clap_mangen = "0.2"
 dotenvy = "0.15"
 ignore = "0.4"
-indicatif = "0.17"
 libc = "0.2"
 miette = { version = "7", features = ["fancy"] }
 serde = { version = "1", features = ["derive"] }
 serde_yml = "0.0"
-termimad = "0.34"
+tar = "0.4"
 tempfile = "3"
 thiserror = "2"
 tracing = "0.1"
@@ -25,6 +28,19 @@ walkdir = "2"
 serde_json = "1.0.149"
 chrono = "0.4.43"
 rayon = "1.11.0"
+regex = "1"
+sigpipe = "0.1.3"
+
+[lints.rust]
+warnings = "deny"
+unused_imports = "deny"
+unused_variables = "deny"
+dead_code = "deny"
+unreachable_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+too_many_arguments = "allow"
 
 [dev-dependencies]
 assert_cmd = "2"

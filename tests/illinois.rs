@@ -5,11 +5,10 @@
 
 use std::fs;
 
-use assert_cmd::cargo::cargo_bin;
 use camino::{Utf8Path, Utf8PathBuf};
 
 fn missouri_bin() -> Utf8PathBuf {
-    Utf8PathBuf::try_from(cargo_bin("missouri")).unwrap()
+    Utf8PathBuf::try_from(assert_cmd::cargo_bin!("missouri").to_path_buf()).unwrap()
 }
 
 /// Create an Illinois scenario in a temp dir.
@@ -127,11 +126,11 @@ fn run_illinois(tmp: &tempfile::TempDir) -> std::process::Output {
         .unwrap()
 }
 
-/// Find flox binary on PATH, returns None if not available.
-fn find_flox() -> Option<Utf8PathBuf> {
+/// Find nix binary on PATH, returns None if not available.
+fn find_nix() -> Option<Utf8PathBuf> {
     let path_var = std::env::var("PATH").ok()?;
     for dir in path_var.split(':') {
-        let candidate = Utf8PathBuf::from(dir).join("flox");
+        let candidate = Utf8PathBuf::from(dir).join("nix");
         if candidate.exists() {
             return Some(candidate);
         }
@@ -139,12 +138,12 @@ fn find_flox() -> Option<Utf8PathBuf> {
     None
 }
 
-/// Create an Illinois scenario for a flox-based fixture.
+/// Create an Illinois scenario for a nix-sandboxed fixture.
 ///
-/// The inner missouri run needs flox on PATH, and the fixture's .flox/ dir
-/// must be present. The PATH is inherited from the outer environment so flox
-/// can activate and provide tools to transitions.
-fn setup_illinois_flox_scenario(fixture_name: &str, expected_exit_code: u8) -> tempfile::TempDir {
+/// The inner missouri run needs nix on PATH to provide tools via `nix shell`.
+/// PATH, HOME, and TMPDIR are inherited from the outer environment so nix
+/// can resolve packages and the inner processes have writable directories.
+fn setup_illinois_nix_scenario(fixture_name: &str, expected_exit_code: u8) -> tempfile::TempDir {
     let tmp = tempfile::tempdir().unwrap();
     let root = Utf8Path::from_path(tmp.path()).unwrap();
     let bin_path = missouri_bin();
@@ -165,7 +164,7 @@ fn setup_illinois_flox_scenario(fixture_name: &str, expected_exit_code: u8) -> t
     // Create a placeholder exit_code.txt in before
     fs::write(before.join("exit_code.txt"), "placeholder\n").unwrap();
 
-    // Script inherits PATH from env so flox and nix tools are available
+    // Script inherits PATH from env so nix tools are available
     let script = format!(
         "#!/bin/sh\n\"{bin_path}\" run -d fixture > output.txt 2>&1\necho $? > exit_code.txt\n"
     );
@@ -177,13 +176,17 @@ fn setup_illinois_flox_scenario(fixture_name: &str, expected_exit_code: u8) -> t
         fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
     }
 
-    // Use the real PATH so flox, nix, and other tools are available
+    // Pass through PATH (for nix), HOME and TMPDIR (for writable dirs)
     let real_path = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
+    let real_home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let real_tmpdir = std::env::var("TMPDIR").unwrap_or_else(|_| "/tmp".into());
 
     let yml = format!(
         r#"env:
   MISSOURI_BIN: "{bin_path}"
   PATH: "{real_path}"
+  HOME: "{real_home}"
+  TMPDIR: "{real_tmpdir}"
 
 transitions:
   - name: "run missouri on {fixture_name}"
@@ -322,12 +325,12 @@ fn illinois_cycle_fails() {
 }
 
 #[test]
-fn illinois_dbt_flox_passes() {
-    if find_flox().is_none() {
-        eprintln!("skipping illinois_dbt_flox_passes: flox not found on PATH");
+fn illinois_dbt_nix_passes() {
+    if find_nix().is_none() {
+        eprintln!("skipping illinois_dbt_nix_passes: nix not found on PATH");
         return;
     }
-    let tmp = setup_illinois_flox_scenario("08-dbt", 0);
+    let tmp = setup_illinois_nix_scenario("08-dbt", 0);
     let output = run_illinois(&tmp);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -339,12 +342,12 @@ fn illinois_dbt_flox_passes() {
 }
 
 #[test]
-fn illinois_meltano_flox_passes() {
-    if find_flox().is_none() {
-        eprintln!("skipping illinois_meltano_flox_passes: flox not found on PATH");
+fn illinois_meltano_nix_passes() {
+    if find_nix().is_none() {
+        eprintln!("skipping illinois_meltano_nix_passes: nix not found on PATH");
         return;
     }
-    let tmp = setup_illinois_flox_scenario("09-meltano", 0);
+    let tmp = setup_illinois_nix_scenario("09-meltano", 0);
     let output = run_illinois(&tmp);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -356,12 +359,12 @@ fn illinois_meltano_flox_passes() {
 }
 
 #[test]
-fn illinois_uv_flox_passes() {
-    if find_flox().is_none() {
-        eprintln!("skipping illinois_uv_flox_passes: flox not found on PATH");
+fn illinois_uv_nix_passes() {
+    if find_nix().is_none() {
+        eprintln!("skipping illinois_uv_nix_passes: nix not found on PATH");
         return;
     }
-    let tmp = setup_illinois_flox_scenario("10-uv", 0);
+    let tmp = setup_illinois_nix_scenario("10-uv", 0);
     let output = run_illinois(&tmp);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -373,12 +376,12 @@ fn illinois_uv_flox_passes() {
 }
 
 #[test]
-fn illinois_cargo_flox_passes() {
-    if find_flox().is_none() {
-        eprintln!("skipping illinois_cargo_flox_passes: flox not found on PATH");
+fn illinois_cargo_nix_passes() {
+    if find_nix().is_none() {
+        eprintln!("skipping illinois_cargo_nix_passes: nix not found on PATH");
         return;
     }
-    let tmp = setup_illinois_flox_scenario("11-cargo", 0);
+    let tmp = setup_illinois_nix_scenario("11-cargo", 0);
     let output = run_illinois(&tmp);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -390,12 +393,12 @@ fn illinois_cargo_flox_passes() {
 }
 
 #[test]
-fn illinois_comparator_env_flox_passes() {
-    if find_flox().is_none() {
-        eprintln!("skipping illinois_comparator_env_flox_passes: flox not found on PATH");
+fn illinois_comparator_env_nix_passes() {
+    if find_nix().is_none() {
+        eprintln!("skipping illinois_comparator_env_nix_passes: nix not found on PATH");
         return;
     }
-    let tmp = setup_illinois_flox_scenario("17-comparator-env-flox", 0);
+    let tmp = setup_illinois_nix_scenario("17-comparator-env-flox", 0);
     let output = run_illinois(&tmp);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -417,6 +420,36 @@ fn illinois_assertions_passes() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(stdout.contains("PASS"), "expected PASS in output: {stdout}");
+}
+
+/// Verify that the meltano fixture's pipeline-ready state uses a pinned pip_url for tap-csv.
+///
+/// An unpinned git URL (no `@tag` or `@commit`) installs from HEAD, which changes
+/// unpredictably. When the HEAD of MeltanoLabs/tap-csv changes in a breaking way,
+/// `meltano run` fails to install the plugin and exits 1, causing the illinois test
+/// to fail. Pinning to a specific tag ensures reproducible behavior.
+#[test]
+fn illinois_meltano_fixture_uses_pinned_pip_url() {
+    let meltano_yml = fs::read_to_string(format!(
+        "{}/tests/fixtures/09-meltano/pipeline-ready/meltano-project/meltano.yml",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .expect("failed to read pipeline-ready meltano.yml");
+
+    // The tap-csv pip_url must include a version specifier (@tag or @commit).
+    // Unpinned form: "git+https://github.com/MeltanoLabs/tap-csv.git"
+    // Pinned form:   "git+https://github.com/MeltanoLabs/tap-csv.git@v1.3.2"
+    let tap_csv_pip_url_line = meltano_yml
+        .lines()
+        .find(|l| l.contains("tap-csv.git"))
+        .expect("no tap-csv pip_url line found in pipeline-ready meltano.yml");
+
+    assert!(
+        tap_csv_pip_url_line.contains('@'),
+        "tap-csv pip_url is unpinned (no @version): {tap_csv_pip_url_line}\n\
+         Unpinned git URLs install from HEAD, which changes and can break meltano run.\n\
+         Pin to a specific tag, e.g. git+https://github.com/MeltanoLabs/tap-csv.git@v1.3.2"
+    );
 }
 
 // --- Recording illinois tests ---
@@ -568,8 +601,6 @@ fn setup_illinois_record_scenario(
     // Build comparators config for each expected recording file
     let mut file_comparators = String::new();
     file_comparators.push_str("        - path: \"output.txt\"\n          ignore: true\n");
-    file_comparators
-        .push_str("        - path: \"fixture/.missouri/.flox/\"\n          ignore: true\n");
     file_comparators.push_str("        - path: \"fixture/.missouri/runs/test/results.json\"\n          command: \"compare-results-json\"\n");
 
     for (path_idx, &num_steps) in path_steps.iter().enumerate() {
@@ -635,8 +666,8 @@ transitions:
     tmp
 }
 
-/// Same as setup_illinois_record_scenario but inherits real PATH for flox.
-fn setup_illinois_record_flox_scenario(
+/// Same as setup_illinois_record_scenario but inherits real PATH/HOME/TMPDIR for nix.
+fn setup_illinois_record_nix_scenario(
     fixture_name: &str,
     expected_exit_code: u8,
     path_steps: &[usize],
@@ -650,15 +681,17 @@ fn setup_illinois_record_flox_scenario(
     );
     let root = Utf8Path::from_path(tmp.path()).unwrap();
 
-    // Override the illinois config to use real PATH (for flox)
+    // Override the illinois config to use real PATH/HOME/TMPDIR (for nix)
     let real_path = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
+    let real_home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let real_tmpdir = std::env::var("TMPDIR").unwrap_or_else(|_| "/tmp".into());
 
     // Re-read the existing yml to get the comparators section
     let existing = fs::read_to_string(root.join("before/.illinois/missouri.yml")).unwrap();
-    // Replace the PATH line
+    // Replace the PATH line and add HOME/TMPDIR
     let updated = existing.replace(
-        &format!("  PATH: \"/usr/local/bin:/usr/bin:/bin\""),
-        &format!("  PATH: \"{real_path}\""),
+        "  PATH: \"/usr/local/bin:/usr/bin:/bin\"",
+        &format!("  PATH: \"{real_path}\"\n  HOME: \"{real_home}\"\n  TMPDIR: \"{real_tmpdir}\""),
     );
     fs::write(root.join("before/.illinois/missouri.yml"), updated).unwrap();
 
@@ -692,19 +725,32 @@ fn illinois_record_branching_passes() {
 }
 
 #[test]
-fn illinois_record_dbt_flox_passes() {
-    if find_flox().is_none() {
-        eprintln!("skipping illinois_record_dbt_flox_passes: flox not found on PATH");
+fn illinois_record_dbt_nix_passes() {
+    if find_nix().is_none() {
+        eprintln!("skipping illinois_record_dbt_nix_passes: nix not found on PATH");
         return;
     }
     // 08-dbt: 2 paths — path 0 has 1 step (dbt-seeded→dbt-ran), path 1 has 2 steps (empty→uv-initialized→uv-added)
     let comparator = compare_results_json_pass(2, &[1, 2]);
-    let tmp = setup_illinois_record_flox_scenario("08-dbt", 0, &[1, 2], &comparator);
+    let tmp = setup_illinois_record_nix_scenario("08-dbt", 0, &[1, 2], &comparator);
     let output = run_illinois(&tmp);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
         "illinois record dbt failed:\nstdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("PASS"), "expected PASS in output: {stdout}");
+}
+
+#[test]
+fn illinois_services_passes() {
+    let tmp = setup_illinois_scenario("21-services", 0);
+    let output = run_illinois(&tmp);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "illinois services failed:\nstdout: {stdout}\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(stdout.contains("PASS"), "expected PASS in output: {stdout}");

@@ -6,7 +6,7 @@
   "label": "Comma Separated Values (CSV)",
   "docs": "https://hub.meltano.com/extractors/tap-csv--meltanolabs",
   "repo": "https://github.com/MeltanoLabs/tap-csv",
-  "pip_url": "git+https://github.com/MeltanoLabs/tap-csv.git",
+  "pip_url": "git+https://github.com/MeltanoLabs/tap-csv.git@v1.3.2",
   "description": "Generic data extractor of CSV (comma separated value) files",
   "logo_url": "https://hub.meltano.com/assets/logos/extractors/csv.png",
   "capabilities": [

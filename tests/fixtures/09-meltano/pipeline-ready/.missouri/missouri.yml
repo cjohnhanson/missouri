@@ -2,3 +2,7 @@ transitions:
   - name: "meltano run"
     command: "cd meltano-project && uv run meltano run tap-csv target-jsonl"
     target: "../pipeline-ran"
+    comparators:
+      files:
+        - path: "meltano-project/output/customers.jsonl"
+          command: "compare-line-count"

@@ -1,2 +1,3 @@
-flox:
-  manifest: "manifest.toml"
+packages:
+  - cargo
+  - rustc

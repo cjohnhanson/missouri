@@ -1,0 +1,4 @@
+transitions:
+  - name: "create wrong data"
+    command: "echo wrong > data.txt"
+    target: "../state-b"

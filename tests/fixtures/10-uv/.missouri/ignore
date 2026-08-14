@@ -3,3 +3,15 @@
 
 # Created by uv init, not relevant to state comparison
 .git/
+
+# uv scaffolding drifts by uv version: the src/ vs flat layout, the
+# authors field baked from git config, the python-version-dependent
+# requires-python, and the lockfile. The assertions verify the real
+# behavior (cowsay importable, cowsay in the lockfile, the script
+# output), so the byte form of uv's boilerplate is not compared.
+pyproject.toml
+.python-version
+.gitignore
+uv.lock
+main.py
+src/

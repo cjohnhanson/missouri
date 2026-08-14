@@ -1,0 +1,10 @@
+transitions:
+  - name: "shell command creates file"
+    command: "echo 'hello world' > output.txt"
+    shell: true
+    target: ../with-shell-output
+
+  - name: "direct command creates file"
+    command: "echo direct > direct.txt"
+    shell: true
+    target: ../with-direct-output

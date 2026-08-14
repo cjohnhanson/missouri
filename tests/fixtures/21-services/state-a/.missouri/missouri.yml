@@ -1,0 +1,6 @@
+transitions:
+  - name: "curl service during transition"
+    command: "curl -sf http://localhost:$PORT/ > response.txt"
+    target: "../state-b"
+    services:
+      - command: "python3 -c \"import http.server,socketserver,sys,signal; signal.signal(signal.SIGTERM,lambda *a:sys.exit(0)); H=type('H',(http.server.BaseHTTPRequestHandler,),{'do_GET':lambda s:(s.send_response(200),s.end_headers(),s.wfile.write(b'service-ok\\n')),'log_message':lambda *a:None}); s=socketserver.TCPServer(('',0),H); print(f'listening on :{s.server_address[1]}',file=sys.stderr,flush=True); s.serve_forever()\""

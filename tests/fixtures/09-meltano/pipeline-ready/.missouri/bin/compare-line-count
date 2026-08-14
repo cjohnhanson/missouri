@@ -1,0 +1,9 @@
+#!/bin/sh
+# Compare two files by line count.
+# Exit 0 if they have the same number of lines, 1 otherwise.
+expected=$(wc -l < "$1")
+actual=$(wc -l < "$2")
+if [ "$expected" -ne "$actual" ]; then
+    echo "line count mismatch: expected $expected, got $actual" >&2
+    exit 1
+fi

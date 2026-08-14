@@ -1,11 +1,11 @@
-//! Recording module: captures transition output to asciicast v2.
+//! Recording module. It captures the transition output as asciicast v2.
 //!
 //! Asciicast v2 format:
 //!   Line 1: JSON header `{"version":2,"width":80,"height":24,...}`
 //!   Lines 2+: `[timestamp, "o", data]`
 
 use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::Instant;
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -19,9 +19,9 @@ const TERM_HEIGHT: u16 = 24;
 
 /// Record a command execution, producing a .cast file.
 ///
-/// `command` is run via `sh -c` in `work_dir` with the given env.
-/// Returns the process Output (status, stdout, stderr) and writes
-/// a `.cast` file to `cast_path`.
+/// Runs `command` through `sh -c` in `work_dir` with the given
+/// environment. Returns the process Output, which holds the status, the
+/// stdout, and the stderr. Writes a `.cast` file to `cast_path`.
 pub fn record_command(
     command: &str,
     shell: bool,
@@ -29,7 +29,7 @@ pub fn record_command(
     env: &std::collections::BTreeMap<String, String>,
     path_env: &str,
     cast_path: &Utf8Path,
-    sandbox: &crate::executor::Sandbox,
+    sandbox: &dyn crate::executor::Backend,
 ) -> std::io::Result<std::process::Output> {
     let mut child = build_recording_command(command, shell, work_dir, env, path_env, sandbox)?;
     let signal_slot = crate::signal::register_child(child.id());
@@ -69,7 +69,8 @@ pub fn record_command(
         all_lines.push(format!("{line}\r\n"));
     }
 
-    // Spread lines across the recording duration (min 3s or 150ms/line).
+    // Spread the lines across the recording. The recording lasts 3s at
+    // least, or 150ms for each line.
     let min_by_lines = all_lines.len() as f64 * 0.15;
     let replay_duration = elapsed.max(min_by_lines).max(3.0);
 
@@ -97,86 +98,21 @@ fn build_recording_command(
     work_dir: &Utf8Path,
     env: &std::collections::BTreeMap<String, String>,
     path_env: &str,
-    sandbox: &crate::executor::Sandbox,
+    sandbox: &dyn crate::executor::Backend,
 ) -> std::io::Result<std::process::Child> {
-    match sandbox {
-        crate::executor::Sandbox::None => {
-            if shell {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg(command)
-                    .current_dir(work_dir.as_std_path())
-                    .env_clear()
-                    .envs(env.iter())
-                    .env("PATH", path_env)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-            } else {
-                let parts: Vec<&str> = command.split_whitespace().collect();
-                if parts.is_empty() {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "empty command",
-                    ));
-                }
-                Command::new(parts[0])
-                    .args(&parts[1..])
-                    .current_dir(work_dir.as_std_path())
-                    .env_clear()
-                    .envs(env.iter())
-                    .env("PATH", path_env)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-            }
+    let mut cmd = if shell {
+        sandbox.build_shell_command(command, work_dir, env, path_env)
+    } else {
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "empty command",
+            ));
         }
-        crate::executor::Sandbox::Flox {
-            flox_bin,
-            project_root,
-        } => {
-            if shell {
-                Command::new(flox_bin.as_str())
-                    .args([
-                        "activate",
-                        "-d",
-                        project_root.as_str(),
-                        "--",
-                        "sh",
-                        "-c",
-                        command,
-                    ])
-                    .current_dir(work_dir.as_std_path())
-                    .env_clear()
-                    .envs(env.iter())
-                    .env("PATH", path_env)
-                    .env("SHELL", "/bin/sh")
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-            } else {
-                let parts: Vec<&str> = command.split_whitespace().collect();
-                if parts.is_empty() {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "empty command",
-                    ));
-                }
-                let mut args = vec!["activate", "-d", project_root.as_str(), "--"];
-                args.extend(parts);
-                Command::new(flox_bin.as_str())
-                    .args(&args)
-                    .current_dir(work_dir.as_std_path())
-                    .env_clear()
-                    .envs(env.iter())
-                    .env("PATH", path_env)
-                    .env("SHELL", "/bin/sh")
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-            }
-        }
-    }
+        sandbox.build_direct_command(&parts, work_dir, env, path_env)
+    };
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
 }
 
 /// Write asciicast v2 format.
@@ -211,12 +147,11 @@ fn extract_cast_output(cast_path: &Utf8Path) -> Option<String> {
     let content = std::fs::read_to_string(cast_path).ok()?;
     let mut output = String::new();
     for line in content.lines().skip(1) {
-        if let Ok(event) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(data) = event.get(2).and_then(|v| v.as_str()) {
-                // Strip \r and ANSI escape sequences — we just want plain text.
-                let clean = strip_ansi(&data.replace('\r', ""));
-                output.push_str(&clean);
-            }
+        if let Ok(event) = serde_json::from_str::<serde_json::Value>(line)
+            && let Some(data) = event.get(2).and_then(|v| v.as_str())
+        {
+            let clean = strip_ansi(&data.replace('\r', ""));
+            output.push_str(&clean);
         }
     }
     let trimmed = output.trim_end().to_string();
@@ -233,13 +168,10 @@ fn strip_ansi(s: &str) -> String {
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            // Skip ESC [ ... (final byte is 0x40-0x7E)
-            if let Some(next) = chars.next() {
-                if next == '[' {
-                    for c2 in chars.by_ref() {
-                        if c2.is_ascii_alphabetic() || c2 == 'm' {
-                            break;
-                        }
+            if let Some('[') = chars.next() {
+                for c2 in chars.by_ref() {
+                    if c2.is_ascii_alphabetic() || c2 == 'm' {
+                        break;
                     }
                 }
             }
@@ -292,7 +224,8 @@ pub fn read_results(results_path: &Utf8Path) -> std::io::Result<RunResults> {
     Ok(results)
 }
 
-/// Find the latest (or specified) run directory under `<root>/<config_dir>/runs/`.
+/// Find a run directory under `<root>/<config_dir>/runs/`. Returns the
+/// named run, or the latest run when the caller names none.
 pub fn find_run_dir(
     root: &Utf8Path,
     config_dir: &str,
@@ -398,7 +331,7 @@ pub fn generate_html_report(run_dir: &Utf8Path) -> std::io::Result<String> {
             ));
             if let Some(ref text) = output {
                 html.push_str(&html_escape(text));
-                html.push_str("\n");
+                html.push('\n');
             }
             html.push_str("</code></pre>\n");
         }
@@ -437,7 +370,7 @@ pub fn generate_md_report(run_dir: &Utf8Path) -> std::io::Result<String> {
             md.push_str(&format!("$ {}\n", step.transition_name));
             if let Some(ref text) = output {
                 md.push_str(text);
-                md.push_str("\n");
+                md.push('\n');
             }
             md.push_str("```\n\n");
         }

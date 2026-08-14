@@ -5,8 +5,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 static FORCE_EXIT: AtomicBool = AtomicBool::new(false);
 
-/// Fixed-size slot array for tracking active child PIDs. Lock-free and
-/// signal-safe. 64 slots is well beyond any realistic parallelism level.
+/// Fixed-size slot array that tracks the active child PIDs. It uses no
+/// locks and is safe to touch from a signal handler. 64 slots are more
+/// than any real test run needs.
 const MAX_CHILDREN: usize = 64;
 static CHILD_PIDS: [AtomicU32; MAX_CHILDREN] = {
     // const initializer — can't use a loop, so use a macro
@@ -46,7 +47,7 @@ pub fn register_child(pid: u32) -> usize {
             return i;
         }
     }
-    // All slots full — shouldn't happen with 64 slots, but don't panic
+    // Every slot is full. 64 slots make this unlikely. Do not panic.
     0
 }
 
@@ -67,8 +68,8 @@ pub fn kill_all_children(sig: i32) {
     }
 }
 
-/// Spawn a command, register its PID for signal handling, wait for output,
-/// then clear the PID registration. Drop-in replacement for `.output()`.
+/// Spawn a command and register its PID for signal handling. Wait for the
+/// output, then clear the PID registration. This replaces `.output()`.
 pub fn run_tracked(cmd: &mut Command) -> io::Result<Output> {
     let child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
     let slot = register_child(child.id());

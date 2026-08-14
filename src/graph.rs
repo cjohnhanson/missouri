@@ -20,6 +20,10 @@ pub struct State {
     pub name: String,
     /// Environment variables defined for this state.
     pub env: BTreeMap<String, String>,
+    /// When true, this state is a valid subgraph entrypoint.
+    pub entrypoint: bool,
+    /// Optional prose description from `doc:` field in state's missouri.yml.
+    pub doc: Option<String>,
 }
 
 /// A resolved file comparator override.
@@ -36,6 +40,13 @@ pub enum EnvComparator {
     Custom { command: String },
 }
 
+/// A resolved network request comparator override.
+#[derive(Debug, Clone)]
+pub enum NetworkComparator {
+    Ignore,
+    Custom { command: String },
+}
+
 /// A resolved transition (edge) in the graph.
 #[derive(Debug)]
 pub struct Transition {
@@ -48,10 +59,18 @@ pub struct Transition {
     pub file_comparators: Vec<(Utf8PathBuf, FileComparator)>,
     /// Env var comparison overrides: var name → comparator.
     pub env_comparators: Vec<(String, EnvComparator)>,
+    /// Network request comparison overrides: path pattern → comparator.
+    pub network_comparators: Vec<(String, NetworkComparator)>,
+    /// Network interception config for this transition.
+    pub network: Option<crate::config::NetworkConfig>,
     /// Expected stdout (exact match) when assertions are enabled.
     pub expected_stdout: Option<String>,
     /// Expected stderr (exact match) when assertions are enabled.
     pub expected_stderr: Option<String>,
+    /// Background services to run during this transition.
+    pub services: Vec<crate::config::ServiceConfig>,
+    /// Optional prose description from `doc:` field in the transition config.
+    pub doc: Option<String>,
 }
 
 /// A resolved assertion attached to a state.
@@ -64,6 +83,11 @@ pub struct Assertion {
     pub expected_stdout: Option<String>,
     pub expected_stderr: Option<String>,
     pub should_fail: bool,
+    /// Background services to run during this assertion.
+    pub services: Vec<crate::config::ServiceConfig>,
+    /// Agent eval name. When set, the assertion launches an agent eval
+    /// instead of running a command.
+    pub agent: Option<String>,
 }
 
 /// A resolved setup command from project-level config.
@@ -79,10 +103,10 @@ pub struct SetupCommand {
 pub enum SandboxConfig {
     /// No sandbox — bare execution with env_clear + manual PATH.
     None,
-    /// Simple mode: install these nix packages via flox.
+    /// Packages to make available via `nix shell`.
     Packages(Vec<String>),
-    /// Advanced mode: use a user-provided manifest.toml.
-    Manifest(Utf8PathBuf),
+    /// Run transitions inside Docker containers with hermetic isolation.
+    Docker { image: Option<String> },
 }
 
 /// The complete state graph.
@@ -114,23 +138,61 @@ pub struct StateGraph {
     pub sandbox_config: SandboxConfig,
 }
 
+/// Check if the project root has a workspace config with `members`.
+/// Returns the resolved member directory paths if present.
+pub fn load_workspace_members(
+    root: &Utf8Path,
+    config_dir: &str,
+) -> Result<Option<Vec<Utf8PathBuf>>> {
+    let root = root.canonicalize_utf8().map_err(Error::Io)?;
+    let root_yml = root.join("missouri.yml");
+    let config_dir_yml = root.join(config_dir).join("missouri.yml");
+
+    let config_path = if root_yml.exists() {
+        root_yml
+    } else if config_dir_yml.exists() {
+        config_dir_yml
+    } else {
+        return Ok(None);
+    };
+
+    let content = std::fs::read_to_string(&config_path).map_err(|e| Error::ConfigRead {
+        path: config_path.clone(),
+        source: e,
+    })?;
+    let cfg = config::parse_project_config(&content).map_err(|e| Error::ConfigParse {
+        path: config_path,
+        source: e,
+    })?;
+
+    if cfg.members.is_empty() {
+        return Ok(None);
+    }
+
+    let members = cfg.members.into_iter().map(|m| root.join(m)).collect();
+
+    Ok(Some(members))
+}
+
 impl StateGraph {
     /// Discover all states under `root` and build the graph.
     /// `config_dir` is the name of the config directory (e.g., ".missouri").
     ///
-    /// Config is loaded from one of two locations (checked in order):
-    /// 1. `<root>/missouri.yml` — root-level config, may have `test_dir` pointing elsewhere
-    /// 2. `<root>/<config_dir>/missouri.yml` — config-dir-level config (original behavior)
+    /// Loads the config from one of two locations, in this order:
+    /// 1. `<root>/missouri.yml` — the root-level config. It can set
+    ///    `test_dir` to another directory.
+    /// 2. `<root>/<config_dir>/missouri.yml` — the config-dir-level config.
+    ///    This is the original location.
     pub fn discover(root: &Utf8Path, config_dir: &str) -> Result<Self> {
-        let root = root.canonicalize_utf8().map_err(|e| Error::Io(e))?;
+        let root = root.canonicalize_utf8().map_err(Error::Io)?;
 
         // Phase 0: Load project-level config
         // Check root-level missouri.yml first, then fall back to <config_dir>/missouri.yml
         let (project_env, setup, project_bin, sandbox_config, state_root) =
             load_project_config(&root, config_dir)?;
 
-        // Phase 1: Find all directories containing <config_dir>/missouri.yml
-        // (excludes the state root itself — root config is project-level, not a state)
+        // Phase 1: Find every directory that holds <config_dir>/missouri.yml.
+        // This skips the state root. The root config is project-level, not a state.
         let mut state_paths: Vec<Utf8PathBuf> = Vec::new();
         collect_states(&state_root, config_dir, &state_root, &mut state_paths)?;
         state_paths.sort();
@@ -164,6 +226,8 @@ impl StateGraph {
                 path: path.clone(),
                 name,
                 env: merged_env,
+                entrypoint: cfg.entrypoint,
+                doc: cfg.doc.clone(),
             });
             configs.push(cfg);
         }
@@ -200,6 +264,7 @@ impl StateGraph {
 
                 let file_comparators = resolve_file_comparators(t);
                 let env_comparators = resolve_env_comparators(t);
+                let network_comparators = resolve_network_comparators(t);
 
                 let transition_idx = transitions.len();
                 transitions.push(Transition {
@@ -210,8 +275,12 @@ impl StateGraph {
                     target: *target_id,
                     file_comparators,
                     env_comparators,
+                    network_comparators,
+                    network: t.network.clone(),
                     expected_stdout: t.stdout.clone(),
                     expected_stderr: t.stderr.clone(),
+                    services: t.services.clone(),
+                    doc: t.doc.clone(),
                 });
 
                 adjacency.entry(source_id).or_default().push(transition_idx);
@@ -223,18 +292,42 @@ impl StateGraph {
         for (i, cfg) in configs.iter().enumerate() {
             let state_id = StateId(i);
             for (a_idx, a) in cfg.assertions.iter().enumerate() {
+                // Validate: must have exactly one of command or agent.
+                if a.command.is_none() && a.agent.is_none() {
+                    return Err(Error::InvalidConfig(format!(
+                        "assertion '{}' in state '{}' has neither command nor agent",
+                        a.name.as_deref().unwrap_or(&format!("assert[{a_idx}]")),
+                        states[i].name,
+                    )));
+                }
+                if a.command.is_some() && a.agent.is_some() {
+                    return Err(Error::InvalidConfig(format!(
+                        "assertion '{}' in state '{}' has both command and agent",
+                        a.name.as_deref().unwrap_or(&format!("assert[{a_idx}]")),
+                        states[i].name,
+                    )));
+                }
+
                 let name = a
                     .name
                     .clone()
-                    .unwrap_or_else(|| format!("{}:assert[{}]", states[i].name, a_idx));
+                    .unwrap_or_else(|| {
+                        if let Some(agent) = &a.agent {
+                            format!("{}:eval[{}]", states[i].name, agent)
+                        } else {
+                            format!("{}:assert[{}]", states[i].name, a_idx)
+                        }
+                    });
                 assertions.push(Assertion {
                     name,
-                    command: a.command.clone(),
+                    command: a.command.clone().unwrap_or_default(),
                     shell: a.shell,
                     state: state_id,
                     expected_stdout: a.stdout.clone(),
                     expected_stderr: a.stderr.clone(),
                     should_fail: a.should_fail,
+                    services: a.services.clone(),
+                    agent: a.agent.clone(),
                 });
             }
         }
@@ -270,6 +363,15 @@ impl StateGraph {
             .collect()
     }
 
+    /// States explicitly marked as `entrypoint: true` in their config.
+    pub fn entrypoints(&self) -> Vec<StateId> {
+        self.states
+            .iter()
+            .filter(|s| s.entrypoint)
+            .map(|s| s.id)
+            .collect()
+    }
+
     /// Get outgoing transitions for a state.
     pub fn outgoing(&self, state: StateId) -> &[usize] {
         self.adjacency
@@ -289,19 +391,20 @@ impl StateGraph {
 
 /// Load ignore patterns from `<root>/<config_dir>/ignore`.
 ///
-/// Uses gitignore syntax: trailing `/` matches directories, `!` negates,
-/// `**` matches across directories, `#` for comments.
+/// Uses gitignore syntax. A trailing `/` matches a directory. A `!`
+/// negates a pattern. A `**` matches across directories. A `#` starts a
+/// comment.
 fn load_ignore_patterns(root: &Utf8Path, config_dir: &str) -> Result<Gitignore> {
     let ignore_path = root.join(config_dir).join("ignore");
     let mut builder = ignore::gitignore::GitignoreBuilder::new(root);
 
-    if ignore_path.exists() {
-        if let Some(err) = builder.add(&ignore_path) {
-            return Err(Error::IgnorePattern {
-                pattern: ignore_path.to_string(),
-                detail: err.to_string(),
-            });
-        }
+    if ignore_path.exists()
+        && let Some(err) = builder.add(&ignore_path)
+    {
+        return Err(Error::IgnorePattern {
+            pattern: ignore_path.to_string(),
+            detail: err.to_string(),
+        });
     }
 
     builder.build().map_err(|e| Error::IgnorePattern {
@@ -310,23 +413,24 @@ fn load_ignore_patterns(root: &Utf8Path, config_dir: &str) -> Result<Gitignore> 
     })
 }
 
-/// Load project-level config, checking two locations in order:
-/// 1. `<root>/missouri.yml` — root-level config (may include `test_dir`)
-/// 2. `<root>/<config_dir>/missouri.yml` — config-dir-level config
-///
-/// Returns (project_env, setup_commands, project_bin, sandbox_config, state_root).
-/// `state_root` is the directory where state discovery should start (may differ
-/// from `root` if `test_dir` is set in a root-level missouri.yml).
-fn load_project_config(
-    root: &Utf8Path,
-    config_dir: &str,
-) -> Result<(
+/// Resolved project config: (env, setup_commands, project_bin, sandbox, state_root).
+type ProjectConfigResult = (
     BTreeMap<String, String>,
     Vec<SetupCommand>,
     Option<Utf8PathBuf>,
     SandboxConfig,
     Utf8PathBuf,
-)> {
+);
+
+/// Load the project-level config. Check two locations, in this order:
+/// 1. `<root>/missouri.yml` — the root-level config. It can include
+///    `test_dir`.
+/// 2. `<root>/<config_dir>/missouri.yml` — the config-dir-level config.
+///
+/// `state_root` in the result is the directory where state discovery
+/// starts. It differs from `root` when a root-level missouri.yml sets
+/// `test_dir`.
+fn load_project_config(root: &Utf8Path, config_dir: &str) -> Result<ProjectConfigResult> {
     let root_yml = root.join("missouri.yml");
     let config_dir_yml = root.join(config_dir).join("missouri.yml");
 
@@ -366,8 +470,8 @@ fn load_project_config(
             })
             .collect();
 
-        let sandbox = if let Some(flox_cfg) = cfg.flox {
-            SandboxConfig::Manifest(root.join(&flox_cfg.manifest))
+        let sandbox = if cfg.docker {
+            SandboxConfig::Docker { image: cfg.docker_image }
         } else if !cfg.packages.is_empty() {
             SandboxConfig::Packages(cfg.packages)
         } else {
@@ -415,8 +519,9 @@ fn load_project_config(
     Ok((project_env, setup, project_bin, sandbox_config, state_root))
 }
 
-/// Recursively find directories containing `<config_dir>/missouri.yml`.
-/// Skips the project root (its missouri.yml is project-level config, not a state).
+/// Find every directory that holds a `<config_dir>/missouri.yml` file.
+/// Skips the project root. The root's missouri.yml is the project-level
+/// config, not a state.
 fn collect_states(
     dir: &Utf8Path,
     config_dir: &str,
@@ -500,6 +605,33 @@ fn resolve_env_comparators(t: &TransitionConfig) -> Vec<(String, EnvComparator)>
                 );
             };
             (ec.name.clone(), comparator)
+        })
+        .collect()
+}
+
+fn resolve_network_comparators(t: &TransitionConfig) -> Vec<(String, NetworkComparator)> {
+    let Some(comps) = &t.comparators else {
+        return vec![];
+    };
+    comps
+        .network
+        .iter()
+        .map(|nc| {
+            let comparator = if nc.ignore {
+                NetworkComparator::Ignore
+            } else if let Some(cmd) = &nc.command {
+                NetworkComparator::Custom {
+                    command: cmd.clone(),
+                }
+            } else {
+                return (
+                    nc.path.clone(),
+                    NetworkComparator::Custom {
+                        command: String::new(),
+                    },
+                );
+            };
+            (nc.path.clone(), comparator)
         })
         .collect()
 }
@@ -673,11 +805,13 @@ transitions:
 
         let graph = StateGraph::discover(root, ".missouri").unwrap();
         assert!(graph.project_bin.is_some());
-        assert!(graph
-            .project_bin
-            .unwrap()
-            .as_str()
-            .ends_with(".missouri/bin"));
+        assert!(
+            graph
+                .project_bin
+                .unwrap()
+                .as_str()
+                .ends_with(".missouri/bin")
+        );
     }
 
     #[test]
@@ -1075,6 +1209,121 @@ transitions:
     }
 
     #[test]
+    fn discover_transition_network_replay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        let flow_path = root.join("a").join(".missouri").join("recordings");
+        fs::create_dir_all(&flow_path).unwrap();
+        fs::write(flow_path.join("worker.flow"), b"").unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "clc dispatch test"
+    target: "../b"
+    network:
+      replay: .missouri/recordings/worker.flow
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.transitions.len(), 1);
+        let t = &graph.transitions[0];
+        match t.network.as_ref().unwrap() {
+            crate::config::NetworkConfig::Replay { replay, .. } => {
+                assert_eq!(replay.as_str(), ".missouri/recordings/worker.flow");
+            }
+            other => panic!("expected Replay, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn discover_transition_network_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "clc dispatch test"
+    target: "../b"
+    network:
+      record: true
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        let t = &graph.transitions[0];
+        assert!(
+            matches!(t.network.as_ref().unwrap(), crate::config::NetworkConfig::Record { .. }),
+            "expected Record variant"
+        );
+    }
+
+    #[test]
+    fn discover_transition_network_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo hi"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        let t = &graph.transitions[0];
+        assert!(t.network.is_none());
+    }
+
+    #[test]
+    fn discover_network_comparators_resolved() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "clc dispatch test"
+    target: "../b"
+    comparators:
+      network:
+        - path: "api.anthropic.com/v1/messages"
+          command: "compare-api-calls"
+        - path: "*.googleapis.com/**"
+          ignore: true
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        let t = &graph.transitions[0];
+        assert_eq!(t.network_comparators.len(), 2);
+
+        let (path0, comp0) = &t.network_comparators[0];
+        assert_eq!(path0, "api.anthropic.com/v1/messages");
+        assert!(matches!(comp0, NetworkComparator::Custom { command } if command == "compare-api-calls"));
+
+        let (path1, comp1) = &t.network_comparators[1];
+        assert_eq!(path1, "*.googleapis.com/**");
+        assert!(matches!(comp1, NetworkComparator::Ignore));
+    }
+
+    #[test]
     fn discover_test_dir_bin_falls_back_to_root() {
         // bin/ exists in root's .missouri but not in test_dir — should fall back
         let tmp = tempfile::tempdir().unwrap();
@@ -1108,5 +1357,233 @@ transitions:
             "bin should be root's, not test_dir's: {bin_str}"
         );
         assert!(bin_str.ends_with(".missouri/bin"));
+    }
+
+    #[test]
+    fn discover_transition_with_services() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "curl http://localhost:$PORT/"
+    target: "../b"
+    services:
+      - command: "my-server --port 0"
+        ready: "curl -sf http://localhost:$PORT/health"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.transitions[0].services.len(), 1);
+        assert_eq!(graph.transitions[0].services[0].command, "my-server --port 0");
+        assert_eq!(
+            graph.transitions[0].services[0].ready.as_deref(),
+            Some("curl -sf http://localhost:$PORT/health")
+        );
+    }
+
+    #[test]
+    fn discover_assertion_with_services() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+assertions:
+  - command: "curl -sf http://localhost:$PORT/"
+    services:
+      - command: "my-server --port 0"
+"#,
+        );
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.assertions[0].services.len(), 1);
+        assert_eq!(graph.assertions[0].services[0].command, "my-server --port 0");
+    }
+
+    #[test]
+    fn discover_services_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+assertions:
+  - command: "true"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(graph.transitions[0].services.is_empty());
+        assert!(graph.assertions[0].services.is_empty());
+    }
+
+    #[test]
+    fn discover_state_doc_propagated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+doc: |
+  This is the initial state.
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        let state_a = graph.states.iter().find(|s| s.name == "a").unwrap();
+        assert_eq!(state_a.doc.as_deref(), Some("This is the initial state.\n"));
+    }
+
+    #[test]
+    fn discover_state_doc_absent_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        let state_a = graph.states.iter().find(|s| s.name == "a").unwrap();
+        assert!(state_a.doc.is_none());
+    }
+
+    #[test]
+    fn discover_transition_doc_propagated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - name: "build"
+    command: "make build"
+    target: "../b"
+    doc: |
+      Compiles the project artifacts.
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        let t = &graph.transitions[0];
+        assert_eq!(t.doc.as_deref(), Some("Compiles the project artifacts.\n"));
+    }
+
+    #[test]
+    fn discover_transition_doc_absent_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(root, "b", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert!(graph.transitions[0].doc.is_none());
+    }
+
+    #[test]
+    fn discover_agent_assertion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+assertions:
+  - agent: eval-skill-commands
+  - agent: eval-output-quality
+    name: "output quality"
+"#,
+        );
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        assert_eq!(graph.assertions.len(), 2);
+
+        assert_eq!(graph.assertions[0].agent.as_deref(), Some("eval-skill-commands"));
+        assert_eq!(graph.assertions[0].name, "a:eval[eval-skill-commands]");
+        assert!(graph.assertions[0].command.is_empty());
+
+        assert_eq!(graph.assertions[1].agent.as_deref(), Some("eval-output-quality"));
+        assert_eq!(graph.assertions[1].name, "output quality");
+    }
+
+    #[test]
+    fn discover_assertion_neither_command_nor_agent_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+assertions:
+  - name: "broken"
+"#,
+        );
+
+        let result = StateGraph::discover(root, ".missouri");
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("neither command nor agent"), "got: {err}");
+    }
+
+    #[test]
+    fn discover_assertion_both_command_and_agent_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+assertions:
+  - command: "echo hi"
+    agent: eval-foo
+"#,
+        );
+
+        let result = StateGraph::discover(root, ".missouri");
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("both command and agent"), "got: {err}");
     }
 }

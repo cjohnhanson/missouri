@@ -28,8 +28,8 @@ impl TestPath {
 
 /// Enumerate all simple paths (no repeated states) starting from each root.
 ///
-/// A "simple path" visits each state at most once. This naturally handles
-/// cycles by refusing to revisit a state already on the current path.
+/// A simple path visits each state once at most. This handles a cycle: the
+/// walk never returns to a state that is already on the current path.
 pub fn enumerate_paths(graph: &StateGraph) -> Vec<TestPath> {
     let roots = graph.roots();
     let mut all_paths = Vec::new();
@@ -44,12 +44,80 @@ pub fn enumerate_paths(graph: &StateGraph) -> Vec<TestPath> {
     all_paths
 }
 
+/// Enumerate paths using subgraph boundaries.
+///
+/// A state marked `entrypoint: true` is a subgraph root. The depth-first
+/// search starts at a graph root. When it reaches an entrypoint, it emits
+/// the path that ends there and stops. Missouri then enumerates a separate
+/// set of paths from each entrypoint.
+///
+/// This removes repeated walks over a shared prefix. If 31 paths pass
+/// through one entrypoint, missouri enumerates the prefix once. Every
+/// downstream path then starts at the entrypoint.
+pub fn enumerate_subgraph_paths(graph: &StateGraph) -> Vec<TestPath> {
+    let roots = graph.roots();
+    let entrypoints: HashSet<StateId> = graph.entrypoints().into_iter().collect();
+    let mut all_paths = Vec::new();
+
+    // Enumerate from graph roots, stopping at entrypoints.
+    for root in &roots {
+        let mut visited = HashSet::new();
+        visited.insert(*root);
+        let mut current_path = Vec::new();
+        dfs_with_boundaries(
+            graph,
+            *root,
+            &mut visited,
+            &mut current_path,
+            &mut all_paths,
+            &entrypoints,
+        );
+    }
+
+    // Enumerate from each entrypoint, stopping at other entrypoints.
+    for &ep in &entrypoints {
+        let mut visited = HashSet::new();
+        visited.insert(ep);
+        let mut current_path = Vec::new();
+        let other_entrypoints: HashSet<StateId> =
+            entrypoints.iter().copied().filter(|&e| e != ep).collect();
+        dfs_with_boundaries(
+            graph,
+            ep,
+            &mut visited,
+            &mut current_path,
+            &mut all_paths,
+            &other_entrypoints,
+        );
+    }
+
+    all_paths
+}
+
 fn dfs(
     graph: &StateGraph,
     current: StateId,
     visited: &mut HashSet<StateId>,
     current_path: &mut Vec<usize>,
     results: &mut Vec<TestPath>,
+) {
+    dfs_with_boundaries(
+        graph,
+        current,
+        visited,
+        current_path,
+        results,
+        &HashSet::new(),
+    )
+}
+
+fn dfs_with_boundaries(
+    graph: &StateGraph,
+    current: StateId,
+    visited: &mut HashSet<StateId>,
+    current_path: &mut Vec<usize>,
+    results: &mut Vec<TestPath>,
+    boundaries: &HashSet<StateId>,
 ) {
     let outgoing = graph.outgoing(current);
 
@@ -73,11 +141,24 @@ fn dfs(
             continue;
         }
 
+        // If the target is a boundary (entrypoint), emit the path ending there
+        // and don't continue into the subgraph.
+        if boundaries.contains(&target) {
+            current_path.push(t_idx);
+            results.push(TestPath {
+                start: find_start(graph, current_path),
+                steps: current_path.clone(),
+            });
+            current_path.pop();
+            any_extended = true;
+            continue;
+        }
+
         any_extended = true;
         visited.insert(target);
         current_path.push(t_idx);
 
-        dfs(graph, target, visited, current_path, results);
+        dfs_with_boundaries(graph, target, visited, current_path, results, boundaries);
 
         current_path.pop();
         visited.remove(&target);
@@ -268,5 +349,89 @@ transitions:
         assert!(display.contains("start"));
         assert!(display.contains("end"));
         assert!(display.contains("→"));
+    }
+
+    #[test]
+    fn subgraph_breaks_at_entrypoint() {
+        // Graph: A → B → C, A → B → D
+        // B is marked entrypoint: true
+        // Should produce: A→B (prefix), B→C, B→D (subgraph from B)
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+"#,
+        );
+        make_state(
+            root,
+            "b",
+            r#"
+entrypoint: true
+transitions:
+  - command: "echo c"
+    target: "../c"
+  - command: "echo d"
+    target: "../d"
+"#,
+        );
+        make_state(root, "c", "{}");
+        make_state(root, "d", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+
+        // Without subgraphs: 2 paths (A→B→C, A→B→D)
+        let old_paths = enumerate_paths(&graph);
+        assert_eq!(old_paths.len(), 2);
+        assert!(old_paths.iter().all(|p| p.steps.len() == 2));
+
+        // With subgraphs: 3 paths (A→B, B→C, B→D)
+        let new_paths = enumerate_subgraph_paths(&graph);
+        assert_eq!(
+            new_paths.len(),
+            3,
+            "expected 3 subgraph paths, got: {:?}",
+            new_paths
+                .iter()
+                .map(|p| p.display(&graph))
+                .collect::<Vec<_>>()
+        );
+
+        let displays: Vec<String> = new_paths.iter().map(|p| p.display(&graph)).collect();
+        assert!(displays.contains(&"a → b".to_string()));
+        assert!(displays.contains(&"b → c".to_string()));
+        assert!(displays.contains(&"b → d".to_string()));
+    }
+
+    #[test]
+    fn subgraph_no_entrypoints_same_as_enumerate() {
+        // No entrypoints — should produce same results as enumerate_paths
+        let tmp = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(tmp.path()).unwrap();
+
+        make_state(
+            root,
+            "a",
+            r#"
+transitions:
+  - command: "echo"
+    target: "../b"
+  - command: "echo"
+    target: "../c"
+"#,
+        );
+        make_state(root, "b", "{}");
+        make_state(root, "c", "{}");
+
+        let graph = StateGraph::discover(root, ".missouri").unwrap();
+        let old = enumerate_paths(&graph);
+        let new = enumerate_subgraph_paths(&graph);
+
+        assert_eq!(old.len(), new.len());
     }
 }
