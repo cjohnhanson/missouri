@@ -11,10 +11,26 @@ fn missouri_bin() -> Utf8PathBuf {
     Utf8PathBuf::try_from(assert_cmd::cargo_bin!("missouri").to_path_buf()).unwrap()
 }
 
+/// Whether Docker can actually run the fixture's image.
+///
+/// A reachable socket is not enough. A runner may have Docker with no
+/// image pulled, and the run then fails on a 404 rather than skipping.
+/// CI pulls the image explicitly, so a skip there would be a real
+/// problem rather than a quiet pass.
 fn docker_available() -> bool {
-    std::path::Path::new("/var/run/docker.sock").exists()
-        || std::env::var("DOCKER_HOST").is_ok()
+    let socket = std::path::Path::new("/var/run/docker.sock").exists()
+        || std::env::var("DOCKER_HOST").is_ok();
+    if !socket {
+        return false;
+    }
+    Command::new("docker")
+        .args(["image", "inspect", FIXTURE_IMAGE])
+        .output()
+        .is_ok_and(|o| o.status.success())
 }
+
+/// The image the fixture runs in.
+const FIXTURE_IMAGE: &str = "debian:bookworm-slim";
 
 fn fixture_dir() -> Utf8PathBuf {
     Utf8PathBuf::from(format!(
@@ -26,7 +42,7 @@ fn fixture_dir() -> Utf8PathBuf {
 #[test]
 fn docker_echo_runs_in_linux_container() {
     if !docker_available() {
-        eprintln!("skipping: docker not available");
+        eprintln!("skipping: docker cannot run {FIXTURE_IMAGE}");
         return;
     }
 

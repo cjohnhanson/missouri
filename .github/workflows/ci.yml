@@ -22,6 +22,8 @@ jobs:
         run: cargo build --verbose
       - name: Lint with warnings denied
         run: cargo clippy --all-targets -- -D warnings
+      - name: Pull the image the docker backend test uses
+        run: docker pull debian:bookworm-slim
       - name: Run the unit tests
         run: cargo test --verbose
       # The illinois integration tests drive uv, duckdb, and nix, so CI
