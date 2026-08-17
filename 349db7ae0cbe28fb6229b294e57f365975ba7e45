@@ -1,0 +1,12 @@
+fresh-eyes: independent reviewer, the missouri composite action.
+
+Exercised: YAML and composite schema parsed; git ls-remote shapes for a
+branch, a missing branch, and an annotated tag; cargo's resolution of a
+tag-object sha and of a bad rev; the exact install command against the
+resolved main sha into a scratch root (exit 0, 1m19s, missouri 0.2.0
+on PATH); Cargo.lock v4 tracked at main; no -sys crates, so a plain
+cargo install builds on ubuntu-latest.
+
+Two hardenings applied after review: the cache key carries runner.arch,
+and the install step takes the sha through env instead of splicing an
+expression into the script (the resolve step's own pattern).
