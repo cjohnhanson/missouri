@@ -1,7 +1,10 @@
 # The reviews a change must pass before it merges. `gaff reviews`
-# prints them and `gaff reviews check` holds them, so the gate never
-# hard-codes a name. An absent key is an error, because no policy must
-# not read as no review required.
+# prints them and `gaff reviews check` holds them, so no gate
+# hard-codes a name.
+#
+# An absent key means this repo declared no policy, and the check
+# refuses the push. An unknown policy is not an empty one. Write
+# `reviews: []` to require none.
 reviews:
   - fresh-eyes
   - mutation
@@ -25,9 +28,12 @@ git:
       - sh
       - scripts/merge-gate.sh
 
-# The CI gate: the same declarations, run by gaff ci on every push.
-# Branch protection on main requires this check, so a sha needs a green
-# gate before main accepts it.
+# The CI gate runs the same declarations under `gaff ci`.
+# Branch protection on main requires this check.
+#
+# The pull_request trigger is required. A fork's pull request raises no
+# push event here, so without it the check never reports and no pull
+# request can merge.
 github:
   - name: gate
     on:
