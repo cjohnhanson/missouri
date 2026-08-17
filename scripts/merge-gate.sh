@@ -19,8 +19,11 @@ set -e
 gate_refs=$(cat)
 
 echo "merge-gate: cargo test"
-cargo test --workspace --quiet >/dev/null </dev/null || {
+# Capture the output. On red, the failing test's name is the first
+# thing a reader needs, and /dev/null once hid it from the CI log.
+test_out=$(cargo test --workspace --quiet 2>&1 </dev/null) || {
   echo "merge-gate: cargo test failed. Nothing merges on red tests." >&2
+  printf '%s\n' "$test_out" | tail -40 >&2
   exit 1
 }
 
