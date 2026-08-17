@@ -5,6 +5,9 @@ edition = "2024"
 description = "Show-me-state: e2e testing as directed graphs of filesystem states"
 license = "MIT"
 repository = "https://github.com/cjohnhanson/missouri"
+homepage = "https://github.com/cjohnhanson/missouri"
+keywords = ["testing", "e2e", "docker", "filesystem", "cli"]
+categories = ["development-tools::testing", "command-line-utilities"]
 
 [dependencies]
 camino = { version = "1", features = ["serde1"] }
