@@ -12,10 +12,9 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
 
+# Least privilege at the top; each job widens only what it needs.
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -29,6 +28,17 @@ jobs:
 
       # A tag that disagrees with the manifest publishes a version
       # nobody asked for, and a registry keeps it forever.
+      # A tag is the only trigger, and anyone who can push a tag can
+      # point one at any commit. Requiring the commit to be on main
+      # means a release carries what main carries, and nothing else.
+      - name: Check the tag is on main
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "tag ${GITHUB_REF_NAME} names a commit that is not on main" >&2
+            exit 1
+          fi
+
       - name: Check the tag matches Cargo.toml
         run: |
           manifest="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
@@ -46,6 +56,19 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --workspace --all-features
 
+      # The merge gate runs this suite on every push, so a release that
+      # skipped it would be a weaker gate than the one that let the
+      # commit in.
+      - name: Run the missouri suite
+        if: hashFiles('tests/missouri/**') != ''
+        env:
+          MISSOURI_SANDBOX: preinstalled
+        run: |
+          # This repo builds the binary it tests with. Installing it
+          # from git would test a different commit than the tag names.
+          cargo install --path . --locked --force
+          cd tests/missouri && missouri run
+
       # Catches a packaging fault while the version can still change,
       # rather than after the registry has it.
       - name: Package and build from the tarball
@@ -54,6 +77,8 @@ jobs:
   create-release:
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       # A draft until every target uploads, so a failed build never
@@ -70,6 +95,10 @@ jobs:
   build:
     needs: create-release
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -156,6 +185,8 @@ jobs:
   finalize:
     needs: [build, publish]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Publish the release
