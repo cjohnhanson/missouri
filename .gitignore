@@ -17,3 +17,7 @@
 # clone. Keep them here, never in Cargo.toml.
 /.cargo/config.toml
 /config.toml
+
+# Nix build output.
+/result
+/result-*
