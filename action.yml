@@ -1,0 +1,39 @@
+name: 'missouri'
+description: 'Install missouri and put it on PATH'
+inputs:
+  ref:
+    description: 'The missouri ref to install: a branch, a tag, or a sha'
+    required: false
+    default: 'main'
+runs:
+  using: 'composite'
+  steps:
+    - name: 'resolve missouri ref'
+      id: resolve
+      shell: bash
+      env:
+        REF: ${{ inputs.ref }}
+      run: |
+        ref="$REF"
+        sha=$(git ls-remote https://github.com/cjohnhanson/missouri "refs/heads/$ref" | cut -f1)
+        [ -n "$sha" ] || sha=$(git ls-remote https://github.com/cjohnhanson/missouri "refs/tags/$ref" | cut -f1)
+        [ -n "$sha" ] || sha="$ref"
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+    - name: 'cache missouri'
+      uses: actions/cache@v4
+      with:
+        path: ~/.missouri-tools
+        key: missouri-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve.outputs.sha }}
+    - name: 'install missouri'
+      shell: bash
+      env:
+        SHA: ${{ steps.resolve.outputs.sha }}
+      run: |
+        if [ ! -x "$HOME/.missouri-tools/bin/missouri" ]; then
+          cargo install --git https://github.com/cjohnhanson/missouri \
+            --rev "$SHA" --locked \
+            --root "$HOME/.missouri-tools" missouri
+        fi
+    - name: 'missouri on PATH'
+      shell: bash
+      run: echo "$HOME/.missouri-tools/bin" >> "$GITHUB_PATH"
