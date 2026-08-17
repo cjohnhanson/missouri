@@ -19,8 +19,6 @@ exclude = [
     ".github/",
     ".agents/",
     "scripts/",
-    # Shells out to scripts/review-note-check.sh, dropped above.
-    "tests/review_note_check.rs",
     "tests/fixtures/",
     "tests/missouri-msb/",
     "CONTRIBUTING.md",
