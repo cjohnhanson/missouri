@@ -4,10 +4,28 @@ version = "0.2.0"
 edition = "2024"
 description = "Show-me-state: e2e testing as directed graphs of filesystem states"
 license = "MIT"
+authors = ["Cody Hanson"]
 repository = "https://github.com/cjohnhanson/missouri"
 homepage = "https://github.com/cjohnhanson/missouri"
 keywords = ["testing", "e2e", "docker", "filesystem", "cli"]
 categories = ["development-tools::testing", "command-line-utilities"]
+
+# Repository machinery belongs on GitHub. A consumer installing the
+# crate gets the source, the license, and the README.
+exclude = [
+    ".tisket/",
+    "tisket.yml",
+    ".gaff/",
+    ".github/",
+    ".agents/",
+    "scripts/",
+    "tests/fixtures/",
+    "tests/missouri-msb/",
+    "CONTRIBUTING.md",
+    "AGENTS.md",
+    ".editorconfig",
+    "rust-toolchain.toml",
+]
 
 [dependencies]
 camino = { version = "1", features = ["serde1"] }

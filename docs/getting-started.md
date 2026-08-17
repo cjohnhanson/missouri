@@ -13,13 +13,7 @@ Missouri tests a CLI tool by modeling its behavior as a graph of filesystem stat
 Build missouri from source:
 
 ```
-cargo install --path missouri
-```
-
-Inside the codelikecody workspace, build it this way instead:
-
-```
-cargo build -p missouri
+cargo install --path .
 ```
 
 Check that the binary is available:

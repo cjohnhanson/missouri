@@ -55,6 +55,15 @@ if [ -d tests/missouri ]; then
   }
 fi
 
+# A pull request event checks out a merge commit GitHub creates. No
+# reviewer saw that commit, so no note can sit on it, and the loop
+# below would refuse every pull request. A push to main carries the
+# note check instead.
+if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+  echo "merge-gate: pull request, tests only. A push to main checks review notes."
+  exit 0
+fi
+
 # Each pushed tip needs a review note. For an annotated tag, the note
 # may sit on the commit the tag peels to. A branch deletion merges
 # nothing, so it is exempt. The notes-ref exemption keys on the remote
