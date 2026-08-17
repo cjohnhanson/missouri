@@ -70,7 +70,9 @@ pub trait Backend: std::fmt::Debug + Send + Sync + AsAny {
             }
             self.build_direct_command(&parts, work_dir, env, path_env)
         };
-        let output = cmd.output().map_err(|e| format!("failed to execute command: {e}"))?;
+        let output = cmd
+            .output()
+            .map_err(|e| format!("failed to execute command: {e}"))?;
         Ok(CommandOutput {
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
@@ -263,7 +265,11 @@ impl Backend for NixBackend {
         path_env: &str,
     ) -> Command {
         // nix shell overrides PATH, so wrap in sh with explicit PATH export.
-        let inner = parts.iter().map(|s| shell_escape(s)).collect::<Vec<_>>().join(" ");
+        let inner = parts
+            .iter()
+            .map(|s| shell_escape(s))
+            .collect::<Vec<_>>()
+            .join(" ");
         let wrapped = format!("export PATH=\"{path_env}:$PATH\"; {inner}");
         let mut args = self.nix_prefix_args();
         args.extend(["sh".into(), "-c".into(), wrapped]);
@@ -279,7 +285,9 @@ impl Backend for NixBackend {
 
 /// Escape a string for safe inclusion in a shell command.
 fn shell_escape(s: &str) -> String {
-    if s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+    if s.chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.')
+    {
         s.to_string()
     } else {
         format!("'{}'", s.replace('\'', "'\\''"))
@@ -335,7 +343,9 @@ impl DockerBackend {
             return Ok(image_tag);
         }
 
-        eprintln!("missouri: building Docker image from {dockerfile_path} (first build may take several minutes)...");
+        eprintln!(
+            "missouri: building Docker image from {dockerfile_path} (first build may take several minutes)..."
+        );
 
         // Create a tar archive of the directory (Dockerfile + context)
         let tar_data = create_build_context(dockerfile_dir)
@@ -380,9 +390,9 @@ impl DockerBackend {
         replay_hosts: &[String],
         dockerfile_dir: Option<&Utf8Path>,
     ) -> Result<CommandOutput, String> {
+        use bollard::Docker;
         use bollard::container::{Config, CreateContainerOptions, RemoveContainerOptions};
         use bollard::models::HostConfig;
-        use bollard::Docker;
 
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| format!("failed to create tokio runtime: {e}"))?;
@@ -589,7 +599,13 @@ impl DockerBackend {
             .map_err(|e| format!("failed to create detached exec: {e}"))?;
 
         docker
-            .start_exec(&exec.id, Some(StartExecOptions { detach: true, ..Default::default() }))
+            .start_exec(
+                &exec.id,
+                Some(StartExecOptions {
+                    detach: true,
+                    ..Default::default()
+                }),
+            )
             .await
             .map_err(|e| format!("failed to start detached exec: {e}"))?;
 
@@ -774,16 +790,12 @@ pub fn start_mitmdump_replay(
         .map(|dir| camino::Utf8PathBuf::from(dir).join("mitmdump"))
         .find(|p| p.exists())
         .ok_or_else(|| {
-            "mitmdump not found on PATH — add mitmproxy to packages or install it manually".to_string()
+            "mitmdump not found on PATH — add mitmproxy to packages or install it manually"
+                .to_string()
         })?;
 
     let mut child = std::process::Command::new(mitmdump_bin.as_str())
-        .args([
-            "--server-replay",
-            flow.as_str(),
-            "--listen-port",
-            "0",
-        ])
+        .args(["--server-replay", flow.as_str(), "--listen-port", "0"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -974,10 +986,11 @@ pub fn start_service(
             Some(Ok(line)) => {
                 if let Some(caps) = pattern.captures(&line)
                     && let Some(m) = caps.get(1)
-                        && let Ok(p) = m.as_str().parse::<u16>() {
-                            port = Some(p);
-                            break;
-                        }
+                    && let Ok(p) = m.as_str().parse::<u16>()
+                {
+                    port = Some(p);
+                    break;
+                }
             }
             Some(Err(e)) => {
                 return Err(format!("failed to read service stderr: {e}"));
@@ -1304,7 +1317,6 @@ pub fn run_all_paths(
     opts: &RunOptions,
     on_progress: Option<&(dyn Fn(ProgressEvent) + Sync)>,
 ) -> Vec<PathResult> {
-
     let total = paths.len();
 
     let results: Vec<PathResult> = paths
@@ -1480,7 +1492,6 @@ fn run_path_transitions(
     let mut current_dir: Option<(TempDir, Utf8PathBuf)> = None;
 
     for (step_idx, &transition_idx) in path.steps.iter().enumerate() {
-
         if crate::signal::is_interrupted() {
             passed = false;
             break;
@@ -1631,22 +1642,23 @@ fn copy_state_to_temp(
     // Restore dot-<name>/ → .<name>/ for each matching directory in config dir.
     let config_path = state.path.join(&graph.config_dir);
     if config_path.exists()
-        && let Ok(entries) = std::fs::read_dir(&config_path) {
-            for entry in entries.flatten() {
-                let name = entry.file_name();
-                let name_str = name.to_string_lossy();
-                if name_str.starts_with("dot-") && entry.file_type().is_ok_and(|ft| ft.is_dir()) {
-                    let real_name = format!(".{}", &name_str[4..]);
-                    let dst = temp_path.join(&real_name);
-                    std::fs::create_dir_all(&dst)
-                        .map_err(|e| format!("failed to create {real_name} dir: {e}"))?;
-                    let src = Utf8PathBuf::try_from(entry.path())
-                        .map_err(|e| format!("dot-dir path not UTF-8: {e}"))?;
-                    copy_dir_recursive_inner(&src, &dst, &graph.config_dir, true)
-                        .map_err(|e| format!("failed to copy {name_str} to {real_name}: {e}"))?;
-                }
+        && let Ok(entries) = std::fs::read_dir(&config_path)
+    {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("dot-") && entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+                let real_name = format!(".{}", &name_str[4..]);
+                let dst = temp_path.join(&real_name);
+                std::fs::create_dir_all(&dst)
+                    .map_err(|e| format!("failed to create {real_name} dir: {e}"))?;
+                let src = Utf8PathBuf::try_from(entry.path())
+                    .map_err(|e| format!("dot-dir path not UTF-8: {e}"))?;
+                copy_dir_recursive_inner(&src, &dst, &graph.config_dir, true)
+                    .map_err(|e| format!("failed to copy {name_str} to {real_name}: {e}"))?;
             }
         }
+    }
 
     Ok((temp_dir, temp_path))
 }
@@ -1823,7 +1835,12 @@ fn run_single_assertion(
 
     let output = if assertion.shell {
         Some(crate::signal::run_tracked(
-            &mut sandbox.build_shell_command(&assertion.command, work_dir, &assertion_env, &path_env),
+            &mut sandbox.build_shell_command(
+                &assertion.command,
+                work_dir,
+                &assertion_env,
+                &path_env,
+            ),
         ))
     } else {
         let parts: Vec<&str> = assertion.command.split_whitespace().collect();
@@ -2000,10 +2017,7 @@ fn execute_transition(
         (Some(crate::config::NetworkConfig::Record { .. }), false) => {
             // Record mode: start mitmdump writing to a flow file in the source state's
             // .missouri/recordings/ directory, named after the transition.
-            let recordings_dir = source_state
-                .path
-                .join(&graph.config_dir)
-                .join("recordings");
+            let recordings_dir = source_state.path.join(&graph.config_dir).join("recordings");
             if let Err(e) = std::fs::create_dir_all(&recordings_dir) {
                 return StepResult {
                     transition_name: transition.name.clone(),
@@ -2150,8 +2164,12 @@ fn execute_transition(
             ))
         } else if transition.shell {
             Some(crate::signal::run_tracked(
-                &mut sandbox
-                    .build_shell_command(&transition.command, work_dir, &cmd_env, &path_env),
+                &mut sandbox.build_shell_command(
+                    &transition.command,
+                    work_dir,
+                    &cmd_env,
+                    &path_env,
+                ),
             ))
         } else {
             let parts: Vec<&str> = transition.command.split_whitespace().collect();
@@ -2496,11 +2514,7 @@ transitions:
 
         let root_missouri = root.join(".missouri");
         fs::create_dir_all(&root_missouri).unwrap();
-        fs::write(
-            root_missouri.join("missouri.yml"),
-            "docker: true\n",
-        )
-        .unwrap();
+        fs::write(root_missouri.join("missouri.yml"), "docker: true\n").unwrap();
 
         make_state(
             root,
@@ -2571,7 +2585,9 @@ transitions:
     #[test]
     #[ignore = "requires Docker"]
     fn docker_backend_executes_command_in_vm() {
-        let backend = DockerBackend { image: DEFAULT_DOCKER_IMAGE.to_string() };
+        let backend = DockerBackend {
+            image: DEFAULT_DOCKER_IMAGE.to_string(),
+        };
         let env = BTreeMap::new();
         let work_dir = Utf8Path::new("/tmp");
         let result = backend
@@ -2584,7 +2600,9 @@ transitions:
     #[test]
     #[ignore = "requires Docker"]
     fn docker_backend_captures_exit_code() {
-        let backend = DockerBackend { image: DEFAULT_DOCKER_IMAGE.to_string() };
+        let backend = DockerBackend {
+            image: DEFAULT_DOCKER_IMAGE.to_string(),
+        };
         let env = BTreeMap::new();
         let work_dir = Utf8Path::new("/tmp");
         let result = backend
@@ -2596,7 +2614,9 @@ transitions:
     #[test]
     #[ignore = "requires Docker"]
     fn docker_backend_captures_stderr() {
-        let backend = DockerBackend { image: DEFAULT_DOCKER_IMAGE.to_string() };
+        let backend = DockerBackend {
+            image: DEFAULT_DOCKER_IMAGE.to_string(),
+        };
         let env = BTreeMap::new();
         let work_dir = Utf8Path::new("/tmp");
         let result = backend
@@ -2609,7 +2629,9 @@ transitions:
     #[test]
     #[ignore = "requires Docker"]
     fn docker_backend_injects_env() {
-        let backend = DockerBackend { image: DEFAULT_DOCKER_IMAGE.to_string() };
+        let backend = DockerBackend {
+            image: DEFAULT_DOCKER_IMAGE.to_string(),
+        };
         let mut env = BTreeMap::new();
         env.insert("MISSOURI_TEST_VAR".into(), "sandbox-value".into());
         let work_dir = Utf8Path::new("/tmp");
@@ -2622,7 +2644,9 @@ transitions:
     #[test]
     #[ignore = "requires Docker"]
     fn docker_backend_runs_in_linux_vm() {
-        let backend = DockerBackend { image: DEFAULT_DOCKER_IMAGE.to_string() };
+        let backend = DockerBackend {
+            image: DEFAULT_DOCKER_IMAGE.to_string(),
+        };
         let env = BTreeMap::new();
         let work_dir = Utf8Path::new("/tmp");
         let result = backend
@@ -2706,7 +2730,9 @@ transitions:
         let port = 9999u16;
         let env = build_network_env(port);
         // NODE_EXTRA_CA_CERTS must point at the mitmproxy CA cert
-        let ca = env.get("NODE_EXTRA_CA_CERTS").expect("NODE_EXTRA_CA_CERTS not set");
+        let ca = env
+            .get("NODE_EXTRA_CA_CERTS")
+            .expect("NODE_EXTRA_CA_CERTS not set");
         assert!(
             ca.contains("mitmproxy"),
             "NODE_EXTRA_CA_CERTS should point at mitmproxy cert, got: {ca}"
@@ -2756,7 +2782,11 @@ transitions:
 "#,
         );
         // Create the referenced flow file in the source state's .missouri/
-        fs::write(root.join("a").join(".missouri").join("test.flow"), b"fake flow").unwrap();
+        fs::write(
+            root.join("a").join(".missouri").join("test.flow"),
+            b"fake flow",
+        )
+        .unwrap();
 
         // Target state: empty (no expected files beyond .missouri/)
         make_state(root, "b", "{}");
@@ -2769,10 +2799,7 @@ transitions:
         let empty_bin = root.join("empty_bin");
         fs::create_dir_all(&empty_bin).unwrap();
         let mut source_env = BTreeMap::new();
-        source_env.insert(
-            "PATH".into(),
-            format!("{empty_bin}:/usr/bin:/bin"),
-        );
+        source_env.insert("PATH".into(), format!("{empty_bin}:/usr/bin:/bin"));
 
         // Work dir: empty temp (simulates a clean source state copy)
         let work = tempfile::tempdir().unwrap();
@@ -2849,10 +2876,7 @@ transitions:
         let empty_bin = root.join("empty_bin");
         fs::create_dir_all(&empty_bin).unwrap();
         let mut source_env = BTreeMap::new();
-        source_env.insert(
-            "PATH".into(),
-            format!("{empty_bin}:/usr/bin:/bin"),
-        );
+        source_env.insert("PATH".into(), format!("{empty_bin}:/usr/bin:/bin"));
 
         let work = tempfile::tempdir().unwrap();
         let work_dir = Utf8Path::from_path(work.path()).unwrap();
@@ -3091,8 +3115,7 @@ time.sleep(300)
         };
 
         let env = BTreeMap::new();
-        let handle =
-            start_service(&config, root, &env, "/usr/bin:/bin", &BareBackend).unwrap();
+        let handle = start_service(&config, root, &env, "/usr/bin:/bin", &BareBackend).unwrap();
 
         assert!(handle.port > 0, "port should be assigned: {}", handle.port);
 
@@ -3132,8 +3155,7 @@ time.sleep(300)
         };
 
         let env = BTreeMap::new();
-        let handle =
-            start_service(&config, root, &env, "/usr/bin:/bin", &BareBackend).unwrap();
+        let handle = start_service(&config, root, &env, "/usr/bin:/bin", &BareBackend).unwrap();
 
         assert!(handle.port > 0, "port should be parsed with custom pattern");
         drop(handle);
@@ -3238,12 +3260,7 @@ transitions:
         make_state(root, "b", "{}");
 
         let graph = StateGraph::discover(root, ".missouri").unwrap();
-        let state_id = graph
-            .states
-            .iter()
-            .find(|s| s.name == "a")
-            .unwrap()
-            .id;
+        let state_id = graph.states.iter().find(|s| s.name == "a").unwrap().id;
 
         let (_temp_dir, work_dir) = copy_state_to_temp(state_id, &graph).unwrap();
 

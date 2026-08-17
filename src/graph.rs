@@ -308,16 +308,13 @@ impl StateGraph {
                     )));
                 }
 
-                let name = a
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| {
-                        if let Some(agent) = &a.agent {
-                            format!("{}:eval[{}]", states[i].name, agent)
-                        } else {
-                            format!("{}:assert[{}]", states[i].name, a_idx)
-                        }
-                    });
+                let name = a.name.clone().unwrap_or_else(|| {
+                    if let Some(agent) = &a.agent {
+                        format!("{}:eval[{}]", states[i].name, agent)
+                    } else {
+                        format!("{}:assert[{}]", states[i].name, a_idx)
+                    }
+                });
                 assertions.push(Assertion {
                     name,
                     command: a.command.clone().unwrap_or_default(),
@@ -471,7 +468,9 @@ fn load_project_config(root: &Utf8Path, config_dir: &str) -> Result<ProjectConfi
             .collect();
 
         let sandbox = if cfg.docker {
-            SandboxConfig::Docker { image: cfg.docker_image }
+            SandboxConfig::Docker {
+                image: cfg.docker_image,
+            }
         } else if !cfg.packages.is_empty() {
             SandboxConfig::Packages(cfg.packages)
         } else {
@@ -1262,7 +1261,10 @@ transitions:
         let graph = StateGraph::discover(root, ".missouri").unwrap();
         let t = &graph.transitions[0];
         assert!(
-            matches!(t.network.as_ref().unwrap(), crate::config::NetworkConfig::Record { .. }),
+            matches!(
+                t.network.as_ref().unwrap(),
+                crate::config::NetworkConfig::Record { .. }
+            ),
             "expected Record variant"
         );
     }
@@ -1316,7 +1318,9 @@ transitions:
 
         let (path0, comp0) = &t.network_comparators[0];
         assert_eq!(path0, "api.anthropic.com/v1/messages");
-        assert!(matches!(comp0, NetworkComparator::Custom { command } if command == "compare-api-calls"));
+        assert!(
+            matches!(comp0, NetworkComparator::Custom { command } if command == "compare-api-calls")
+        );
 
         let (path1, comp1) = &t.network_comparators[1];
         assert_eq!(path1, "*.googleapis.com/**");
@@ -1380,7 +1384,10 @@ transitions:
 
         let graph = StateGraph::discover(root, ".missouri").unwrap();
         assert_eq!(graph.transitions[0].services.len(), 1);
-        assert_eq!(graph.transitions[0].services[0].command, "my-server --port 0");
+        assert_eq!(
+            graph.transitions[0].services[0].command,
+            "my-server --port 0"
+        );
         assert_eq!(
             graph.transitions[0].services[0].ready.as_deref(),
             Some("curl -sf http://localhost:$PORT/health")
@@ -1405,7 +1412,10 @@ assertions:
 
         let graph = StateGraph::discover(root, ".missouri").unwrap();
         assert_eq!(graph.assertions[0].services.len(), 1);
-        assert_eq!(graph.assertions[0].services[0].command, "my-server --port 0");
+        assert_eq!(
+            graph.assertions[0].services[0].command,
+            "my-server --port 0"
+        );
     }
 
     #[test]
@@ -1538,11 +1548,17 @@ assertions:
         let graph = StateGraph::discover(root, ".missouri").unwrap();
         assert_eq!(graph.assertions.len(), 2);
 
-        assert_eq!(graph.assertions[0].agent.as_deref(), Some("eval-skill-commands"));
+        assert_eq!(
+            graph.assertions[0].agent.as_deref(),
+            Some("eval-skill-commands")
+        );
         assert_eq!(graph.assertions[0].name, "a:eval[eval-skill-commands]");
         assert!(graph.assertions[0].command.is_empty());
 
-        assert_eq!(graph.assertions[1].agent.as_deref(), Some("eval-output-quality"));
+        assert_eq!(
+            graph.assertions[1].agent.as_deref(),
+            Some("eval-output-quality")
+        );
         assert_eq!(graph.assertions[1].name, "output quality");
     }
 

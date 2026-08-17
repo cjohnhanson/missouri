@@ -6,7 +6,7 @@
 
 use camino::Utf8Path;
 use ignore::gitignore::Gitignore;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::graph::StateGraph;
 use crate::paths::TestPath;
@@ -62,12 +62,13 @@ pub fn render_markdown(graph: &StateGraph, path: &TestPath) -> String {
         out.push_str("```\n");
 
         if let Some(stdout) = &t.expected_stdout
-            && !stdout.is_empty() {
-                out.push('\n');
-                out.push_str("```\n");
-                out.push_str(stdout);
-                out.push_str("```\n");
-            }
+            && !stdout.is_empty()
+        {
+            out.push('\n');
+            out.push_str("```\n");
+            out.push_str(stdout);
+            out.push_str("```\n");
+        }
 
         out.push('\n');
     }

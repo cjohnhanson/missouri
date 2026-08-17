@@ -11,8 +11,8 @@
 
 use std::path::Path;
 
-use camino::{Utf8Path, Utf8PathBuf};
 use crate::agent_cli::AgentSpec;
+use camino::{Utf8Path, Utf8PathBuf};
 
 /// Sentinel file name written by `missouri agent pass/fail`.
 pub const VERDICT_FILE: &str = ".missouri-verdict";
@@ -42,7 +42,8 @@ pub fn load_eval(
     let content = std::fs::read_to_string(&eval_path)
         .map_err(|e| format!("failed to read {eval_path}: {e}"))?;
 
-    AgentSpec::from_markdown(&content).map_err(|e| e.to_string())
+    AgentSpec::from_markdown(&content)
+        .map_err(|e| e.to_string())
         .map_err(|e| format!("failed to parse frontmatter in {eval_path}: {e}"))
 }
 

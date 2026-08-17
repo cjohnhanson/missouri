@@ -13,9 +13,10 @@ impl DocPage {
     pub fn content(&self) -> &str {
         let md = self.raw;
         if let Some(start) = md.find("<!-- metadata")
-            && let Some(end) = md[start..].find("-->") {
-                return md[start + end + 3..].trim_start_matches('\n');
-            }
+            && let Some(end) = md[start..].find("-->")
+        {
+            return md[start + end + 3..].trim_start_matches('\n');
+        }
         md
     }
 }

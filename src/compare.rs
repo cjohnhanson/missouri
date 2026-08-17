@@ -466,10 +466,12 @@ mod tests {
             &crate::executor::BareBackend,
         );
         assert!(!result.passed);
-        assert!(result
-            .file_diffs
-            .iter()
-            .any(|d| matches!(d, FileDiff::ExtraFile { path } if path.as_str() == "extra.txt")));
+        assert!(
+            result
+                .file_diffs
+                .iter()
+                .any(|d| matches!(d, FileDiff::ExtraFile { path } if path.as_str() == "extra.txt"))
+        );
     }
 
     #[test]
@@ -497,10 +499,11 @@ mod tests {
             &crate::executor::BareBackend,
         );
         assert!(!result.passed);
-        assert!(result
-            .file_diffs
-            .iter()
-            .any(|d| matches!(d, FileDiff::MissingFile { path } if path.as_str() == "needed.txt")));
+        assert!(
+            result.file_diffs.iter().any(
+                |d| matches!(d, FileDiff::MissingFile { path } if path.as_str() == "needed.txt")
+            )
+        );
     }
 
     #[test]

@@ -46,7 +46,9 @@ pub enum Error {
     #[error("no entry points found (all states have inbound transitions)")]
     #[diagnostic(
         code(missouri::graph::no_roots),
-        help("at least one state must have no inbound transitions. that state is the test entry point")
+        help(
+            "at least one state must have no inbound transitions. that state is the test entry point"
+        )
     )]
     NoRoots,
 

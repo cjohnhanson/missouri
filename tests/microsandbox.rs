@@ -33,10 +33,7 @@ fn docker_available() -> bool {
 const FIXTURE_IMAGE: &str = "debian:bookworm-slim";
 
 fn fixture_dir() -> Utf8PathBuf {
-    Utf8PathBuf::from(format!(
-        "{}/tests/missouri-msb",
-        env!("CARGO_MANIFEST_DIR")
-    ))
+    Utf8PathBuf::from(format!("{}/tests/missouri-msb", env!("CARGO_MANIFEST_DIR")))
 }
 
 #[test]

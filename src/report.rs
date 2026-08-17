@@ -305,15 +305,16 @@ fn print_summary(out: &mut impl Write, results: &[PathResult]) {
     assertions.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     if let Some((_, top_dur)) = assertions.first()
-        && *top_dur > Duration::from_secs(1) {
-            writeln!(out).ok();
-            writeln!(out, "Slowest assertions:").ok();
-            for (name, dur) in assertions.iter().take(5) {
-                if *dur > Duration::from_millis(500) {
-                    writeln!(out, "  {name} {}", fmt_duration(*dur)).ok();
-                }
+        && *top_dur > Duration::from_secs(1)
+    {
+        writeln!(out).ok();
+        writeln!(out, "Slowest assertions:").ok();
+        for (name, dur) in assertions.iter().take(5) {
+            if *dur > Duration::from_millis(500) {
+                writeln!(out, "  {name} {}", fmt_duration(*dur)).ok();
             }
         }
+    }
 }
 
 fn fmt_duration(d: Duration) -> String {

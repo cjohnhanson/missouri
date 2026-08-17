@@ -282,13 +282,19 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
         Command::GenMan { dir } => {
             use clap::CommandFactory as _;
             std::fs::create_dir_all(&dir).into_diagnostic()?;
-            crate::mangen::write_man_pages(&Args::command(), dir.as_std_path()).into_diagnostic()?;
+            crate::mangen::write_man_pages(&Args::command(), dir.as_std_path())
+                .into_diagnostic()?;
             Ok(true)
         }
 
         Command::GenCompletions { shell } => {
             use clap::CommandFactory as _;
-            clap_complete::generate(shell, &mut Args::command(), "missouri", &mut std::io::stdout());
+            clap_complete::generate(
+                shell,
+                &mut Args::command(),
+                "missouri",
+                &mut std::io::stdout(),
+            );
             Ok(true)
         }
 
@@ -601,7 +607,8 @@ fn run_agent_eval(eval_args: &AgentEvalArgs, config_dir: &str) -> miette::Result
         system_prompt: "You are an evaluation agent for missouri. Your job is to evaluate \
              the state described in the prompt, then call `missouri agent pass` \
              or `missouri agent fail <details>`. Do not stop without rendering \
-             a verdict.".to_string(),
+             a verdict."
+            .to_string(),
         initial_prompt: initial_prompt.clone(),
         extra_args: vec![],
         allowed_tools: vec![
