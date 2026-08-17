@@ -1,0 +1,1 @@
+fresh-eyes: subagent confirm of a comments-only rewrite of merge-gate.sh to ASD-STE100. Code verified unchanged in all six repos (identical non-blank code sequence vs HEAD); every comment checked against the code beside it: stdin capture, remote-ref notes exemption, tag peel, empty-suite check, both stated limits, and mdstore's --all-features rationale. Verdict: pass.
