@@ -79,3 +79,15 @@ missouri docs [topic]      # bundled documentation
 - [Getting Started](docs/getting-started.md) — first test suite walkthrough
 - [Writing Tests](docs/writing-tests.md) — transitions, assertions, comparators, services
 - [CLI Reference](docs/cli-reference.md) — complete command documentation
+
+## Related
+
+- [tisket](https://github.com/cjohnhanson/tisket) — issue tracker. Markdown issues with YAML frontmatter, in the repository
+- [zettel](https://github.com/cjohnhanson/zettel) — zettelkasten notes for a repository
+- [almanac](https://github.com/cjohnhanson/almanac) — agent skill index, over pluggable sources
+- [gaff](https://github.com/cjohnhanson/gaff) — context-lifecycle handler for coding agents
+- [mdstore](https://github.com/cjohnhanson/mdstore) — the frontmattered markdown library the other three store documents with
+
+## License
+
+MIT.

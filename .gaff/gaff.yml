@@ -24,6 +24,7 @@ github:
   - name: gate
     on:
       - push
+      - pull_request
     steps:
       - name: fetch review notes
         command: [sh, -c, "git fetch origin +refs/notes/reviews:refs/notes/reviews || true"]
