@@ -11,22 +11,55 @@ fn missouri_bin() -> Utf8PathBuf {
     Utf8PathBuf::try_from(assert_cmd::cargo_bin!("missouri").to_path_buf()).unwrap()
 }
 
+/// How long the probe waits for Docker to answer.
+///
+/// The daemon answers a local inspect in milliseconds. A wait this
+/// long is generous and still bounded.
+const DOCKER_PROBE: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Whether Docker can actually run the fixture's image.
 ///
 /// A reachable socket is not enough. A runner may have Docker with no
 /// image pulled, and the run then fails on a 404 rather than skipping.
 /// CI pulls the image explicitly, so a skip there would be a real
 /// problem rather than a quiet pass.
+///
+/// The socket file existing is not enough either. Docker Desktop
+/// leaves `/var/run/docker.sock` in place when it is stopped, and
+/// `docker image inspect` then blocks on a daemon that never answers.
+/// This probe once hung the whole suite past ten minutes on a machine
+/// with Docker installed and not running, which reads as a hang rather
+/// than as the skip it was written to be. So the probe has a deadline,
+/// and a probe that does not answer counts as unavailable.
 fn docker_available() -> bool {
     let socket = std::path::Path::new("/var/run/docker.sock").exists()
         || std::env::var("DOCKER_HOST").is_ok();
     if !socket {
         return false;
     }
-    Command::new("docker")
+    let Ok(mut child) = Command::new("docker")
         .args(["image", "inspect", FIXTURE_IMAGE])
-        .output()
-        .is_ok_and(|o| o.status.success())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let deadline = std::time::Instant::now() + DOCKER_PROBE;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) => {}
+            Err(_) => return false,
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            eprintln!("docker did not answer within {DOCKER_PROBE:?}; treating it as unavailable");
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }
 
 /// The image the fixture runs in.
