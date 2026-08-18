@@ -56,7 +56,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --workspace --all-features
 
-      # The merge gate runs this suite on every push, so a release that
+      # The merge gate runs this suite on every pull request, so a release that
       # skipped it would be a weaker gate than the one that let the
       # commit in.
       - name: Run the missouri suite
