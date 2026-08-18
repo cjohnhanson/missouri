@@ -1,0 +1,199 @@
+# Cutting a release: bump the version in Cargo.toml, commit, tag, push
+# the tag. This runs from the tag.
+#
+# The registry's trusted publishing cannot create a crate that does not
+# exist. The first publish of a name is a manual `cargo publish` with a
+# token. Every release after that runs here.
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+# Least privilege at the top; each job widens only what it needs.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN_NAME: missouri
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A tag that disagrees with the manifest publishes a version
+      # nobody asked for, and a registry keeps it forever.
+      # A tag is the only trigger, and anyone who can push a tag can
+      # point one at any commit. Requiring the commit to be on main
+      # means a release carries what main carries, and nothing else.
+      - name: Check the tag is on main
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "tag ${GITHUB_REF_NAME} names a commit that is not on main" >&2
+            exit 1
+          fi
+
+      - name: Check the tag matches Cargo.toml
+        run: |
+          manifest="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$manifest" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match Cargo.toml ($manifest)" >&2
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features
+
+      # The merge gate runs this suite on every pull request, so a release that
+      # skipped it would be a weaker gate than the one that let the
+      # commit in.
+      - name: Run the missouri suite
+        if: hashFiles('tests/missouri/**') != ''
+        env:
+          MISSOURI_SANDBOX: preinstalled
+        run: |
+          # This repo builds the binary it tests with. Installing it
+          # from git would test a different commit than the tag names.
+          cargo install --path . --locked --force
+          cd tests/missouri && missouri run
+
+      # Catches a packaging fault while the version can still change,
+      # rather than after the registry has it.
+      - name: Package and build from the tarball
+        run: cargo package --locked
+
+  create-release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      # A draft until every target uploads, so a failed build never
+      # leaves a half-populated release for anyone to install from.
+      - name: Open the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --draft --verify-tag \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
+
+  build:
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static musl, so one Linux artifact runs anywhere and a
+          # future package needs no libc coordination.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            cross: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # cargo-zigbuild supplies the musl cross linker without a
+      # container, so the matrix stays on plain runners.
+      - name: Install cargo-zigbuild
+        if: matrix.cross
+        run: |
+          pip install ziglang
+          cargo install cargo-zigbuild --locked
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cargo zigbuild --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
+
+      - name: Assemble the archive
+        id: archive
+        run: |
+          staging="${BIN_NAME}-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp "target/${{ matrix.target }}/release/${BIN_NAME}" "$staging/"
+          cp README.md LICENSE "$staging/"
+          tar czf "$staging.tar.gz" "$staging"
+          shasum -a 256 "$staging.tar.gz" > "$staging.tar.gz.sha256"
+          echo "asset=$staging.tar.gz" >> "$GITHUB_OUTPUT"
+
+      # Records where the binary was built and from which commit.
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.archive.outputs.asset }}
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            "${{ steps.archive.outputs.asset }}" \
+            "${{ steps.archive.outputs.asset }}.sha256" \
+            --clobber
+
+  publish-crate:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      # `checkout` needs contents. A job that lists any permission
+      # sets every other one to none, and a private repository would
+      # then fail the checkout. Public repositories hide that today.
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  finalize:
+    needs: [build, publish-crate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clear the draft flag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false

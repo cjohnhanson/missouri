@@ -19,8 +19,6 @@ exclude = [
     ".github/",
     ".agents/",
     "scripts/",
-    # Shells out to scripts/merge-gate.sh, which the line above drops.
-    "tests/merge_gate_guard.rs",
     "tests/fixtures/",
     "tests/missouri-msb/",
     "CONTRIBUTING.md",
@@ -70,3 +68,11 @@ too_many_arguments = "allow"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+
+# A released binary carries no debug symbols, and a user installing a
+# CLI never reads them. Thin LTO with one codegen unit trades build
+# time for size and speed. A release builds once and installs often.
+[profile.release]
+strip = "symbols"
+lto = "thin"
+codegen-units = 1
