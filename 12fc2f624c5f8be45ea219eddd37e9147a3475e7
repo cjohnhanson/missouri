@@ -1,0 +1,8 @@
+A cold reviewer read this branch and returned SHIP with no blocker.
+
+The change is the gate and the release path, not the tool. One gate definition in .gaff/gaff.yml, read by CI and by the local hooks so the two cannot drift. The review-note check moved into gaff, where it is Rust with tests, instead of a copy of one shell script in six repositories.
+
+The reviewer compared the gate across all six and found scripts/merge-gate.sh byte-identical everywhere, with every .gaff/gaff.yml difference explained by the repository's own needs. It confirmed the release profile breaks no packaging, and that stripping symbols costs nothing here because nothing in this repository asks a user for a backtrace.
+
+signoff[fresh-eyes] PASS 12fc2f6 read Cargo.toml, .gaff/gaff.yml and scripts/merge-gate.sh, compared the gate against the other five and found the script byte-identical and every config difference explained, and ran cargo build --release, cargo package --list, and the missouri suite green on the runner's own exit code
+signoff[mutation] PASS 12fc2f6 the guards this gate depends on live in gaff and were mutated there one at a time, each turning one named test red, including both stdin call sites which were unbound until three end-to-end tests were added
