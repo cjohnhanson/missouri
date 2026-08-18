@@ -31,9 +31,6 @@ git:
 # The CI gate runs the same declarations under `gaff ci`.
 # Branch protection on main requires this check.
 #
-# The pull_request trigger is required. A fork's pull request raises no
-# push event here, so without it the check never reports and no pull
-# request can merge.
 github:
   - name: gate
     # A pull request only, on purpose. A squash merge writes a commit
