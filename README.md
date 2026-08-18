@@ -60,6 +60,25 @@ custom comparators for files that need non-byte-for-byte comparison,
 services for background processes, and agent assertions that delegate
 subjective evaluation to an LLM.
 
+## Install
+
+From the first published release onward:
+
+```sh
+cargo install missouri
+```
+
+A tagged release also carries a prebuilt binary for macOS and Linux,
+on x86-64 and arm64. Take the archive for your platform from the
+[releases page](https://github.com/cjohnhanson/missouri/releases) and
+put `missouri` on your `PATH`.
+
+To build from a checkout:
+
+```sh
+cargo install --git https://github.com/cjohnhanson/missouri
+```
+
 ## Usage
 
 ```
