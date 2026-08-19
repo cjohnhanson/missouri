@@ -1,1 +1,5 @@
-fresh-eyes: nobody actually reviewed this
+signoff[review-tests] PASS e62ad2e2c60177342a7c676a58ce23c27fc608f0 mutated a guard and a case went red
+signoff[review-docs] PASS e62ad2e2c60177342a7c676a58ce23c27fc608f0 swept every prose surface against the code
+signoff[review-code] PASS e62ad2e2c60177342a7c676a58ce23c27fc608f0 read the conventions before the diff
+signoff[review-deps] PASS e62ad2e2c60177342a7c676a58ce23c27fc608f0 checked the pin and the licence
+signoff[review-usability] PASS e62ad2e2c60177342a7c676a58ce23c27fc608f0 followed the install cold
