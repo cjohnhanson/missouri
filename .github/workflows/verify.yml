@@ -17,8 +17,14 @@ jobs:
           'components': 'clippy, rustfmt'
       - name: 'rust cache'
         uses: 'Swatinem/rust-cache@v2'
-      - name: 'install missouri'
-        uses: 'cjohnhanson/missouri@main'
+      - name: 'install missouri from tree'
+        run: |
+          sh -c 'cargo install --path . --locked --root "$HOME/.missouri-tools" missouri && echo "$HOME/.missouri-tools/bin" >> "$GITHUB_PATH"'
+      - name: 'pull the docker test image'
+        run: |
+          docker pull debian:bookworm-slim
+      - name: 'gaff'
+        uses: 'cjohnhanson/gaff@main'
       - name: 'formatting'
         run: |
           cargo fmt --all --check
