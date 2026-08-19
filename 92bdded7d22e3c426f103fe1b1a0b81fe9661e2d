@@ -1,0 +1,5 @@
+signoff[review-tests] PASS 92bdded7d22e3c426f103fe1b1a0b81fe9661e2d the failing verify run named the missing binary, and the fix gives verify the tool steps its own gate carries
+signoff[review-docs] PASS 92bdded7d22e3c426f103fe1b1a0b81fe9661e2d each workflow states why its trigger and its steps are what they are, and gaff check reports no drift
+signoff[review-code] PASS 92bdded7d22e3c426f103fe1b1a0b81fe9661e2d one config generates both workflows, and the tool steps are taken from the gate rather than written twice
+signoff[review-deps] PASS 92bdded7d22e3c426f103fe1b1a0b81fe9661e2d no package manifest changed; the added steps are the published gaff and missouri actions already used by the gate
+signoff[review-usability] PASS 92bdded7d22e3c426f103fe1b1a0b81fe9661e2d a clean runner now has the binaries the suite drives, which a developer machine supplied silently
