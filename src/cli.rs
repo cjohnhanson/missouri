@@ -73,14 +73,13 @@ pub enum Command {
     Agent(AgentArgs),
 }
 
-#[derive(Parser)]
-pub struct DocsArgs {
-    /// Topic slug to display, or "search" to search
-    pub topic: Option<String>,
+pub use diataxis::DocsArgs;
 
-    /// Search query (when topic is "search")
-    pub query: Option<String>,
-}
+/// This tool's own documentation, compiled in.
+///
+/// The build script embedded every page in `docs/`, so nothing here
+/// lists them and `missouri docs` works from any directory.
+static DOCS: &[(&str, &str)] = diataxis::embedded_docs!();
 
 #[derive(Parser)]
 pub struct DocArgs {
@@ -504,31 +503,21 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             Ok(true)
         }
 
-        Command::Docs(args) => match args.topic.as_deref() {
-            None | Some("list") => {
-                crate::docs::list();
-                Ok(true)
-            }
-            Some("search") => {
-                let query = args.query.as_deref().unwrap_or("");
-                if query.is_empty() {
-                    eprintln!("usage: missouri docs search <query>");
-                    return Ok(false);
-                }
-                crate::docs::search(query);
-                Ok(true)
-            }
-            Some(identifier) => {
-                if crate::docs::show(identifier) {
+        Command::Docs(args) => {
+            let set = diataxis::DocSet::from_embedded(DOCS).into_diagnostic()?;
+            match args.request().and_then(|request| set.render(request)) {
+                Ok(text) => {
+                    print!("{text}");
                     Ok(true)
-                } else {
-                    eprintln!("unknown doc: {identifier}");
+                }
+                Err(e) => {
+                    eprintln!("{e}");
                     eprintln!();
-                    crate::docs::list();
+                    print!("{}", set.listing());
                     Ok(false)
                 }
             }
-        },
+        }
 
         Command::Agent(agent_args) => match agent_args.command {
             AgentCommand::Pass => {
