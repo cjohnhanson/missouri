@@ -1,0 +1,27 @@
+# The wheel carries the binary. maturin's `bin` bindings put every
+# Cargo bin target into `<dist>.data/scripts/`, which an installer
+# copies onto PATH. This is what ruff and uv ship: one wheel per
+# platform, the binary inside it, nothing downloaded at install time.
+#
+# Do not add `[project.scripts]`. maturin refuses it beside a binary
+# with "Defining scripts and working with a binary doesn't mix well".
+# The command name comes from the Cargo bin name and from nowhere else.
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "msri"
+description = "Show-me-state: e2e testing as directed graphs of filesystem states"
+# The version lives in Cargo.toml and is read from there. ruff and uv
+# each keep a second literal here and run a tool to hold the two equal;
+# declaring it dynamic removes the drift instead of policing it.
+dynamic = ["version"]
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+
+[tool.maturin]
+bindings = "bin"
+manifest-path = "Cargo.toml"
+strip = true

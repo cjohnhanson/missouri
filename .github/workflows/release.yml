@@ -11,6 +11,15 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
+  # A dry run. Every build job runs and every publish job is skipped,
+  # so the whole matrix can be exercised before a tag exists. A release
+  # that first compiles on tag day is a guess, not a release.
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload to the registries. Leave false to build only."
+        type: boolean
+        default: false
 
 # Least privilege at the top; each job widens only what it needs.
 permissions:
@@ -32,6 +41,7 @@ jobs:
       # point one at any commit. Requiring the commit to be on main
       # means a release carries what main carries, and nothing else.
       - name: Check the tag is on main
+        if: github.event_name == 'push'
         run: |
           git fetch --quiet origin main
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
@@ -40,6 +50,7 @@ jobs:
           fi
 
       - name: Check the tag matches Cargo.toml
+        if: github.event_name == 'push'
         run: |
           manifest="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           if [ "$manifest" != "${GITHUB_REF_NAME}" ]; then
@@ -76,6 +87,7 @@ jobs:
 
   create-release:
     needs: verify
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -93,7 +105,10 @@ jobs:
             --generate-notes
 
   build:
-    needs: create-release
+    needs: [verify, create-release]
+    # A dispatch skips create-release, and a skipped dependency
+    # would block this job without the explicit condition.
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -154,12 +169,26 @@ jobs:
           echo "asset=$staging.tar.gz" >> "$GITHUB_OUTPUT"
 
       # Records where the binary was built and from which commit.
+      # The npm job assembles its platform packages from these.
+      # A GitHub release asset is a tarball, and unpacking one per
+      # target in another job is more moving parts than an artifact.
+      - name: Upload the raw binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/missouri
+            target/${{ matrix.target }}/release/msri
+          if-no-files-found: error
+
       - name: Attest the build provenance
+        if: github.event_name == 'push'
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: ${{ steps.archive.outputs.asset }}
 
       - name: Upload to the release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -170,6 +199,7 @@ jobs:
 
   publish-crate:
     needs: build
+    if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-latest
     permissions:
       # `checkout` needs contents. A job that lists any permission
@@ -186,8 +216,171 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
+
+  wheels:
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            manylinux: musllinux_1_1
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            manylinux: musllinux_1_1
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # `--compatibility pypi` keeps a wheel's platform tag inside what
+      # PyPI accepts. Without it the upload is rejected after the whole
+      # matrix has already run.
+      #
+      # A musl-only Linux wheel does not install on a glibc interpreter,
+      # so the musl builds carry a manylinux tag as well. The binary is
+      # static, so one file serves both.
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: >-
+            --release --locked --out dist
+            ${{ matrix.manylinux && '--compatibility 2_17' || '' }}
+            --compatibility pypi
+      - name: Check both commands are in the wheel
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob, zipfile, sys
+          names = []
+          for w in glob.glob("dist/*.whl"):
+              names += [n for n in zipfile.ZipFile(w).namelist() if ".data/scripts/" in n]
+          want = {"missouri", "msri"}
+          have = {n.rsplit("/", 1)[-1] for n in names}
+          if not want <= have:
+              print(f"wheel ships {have}, missing {want - have}", file=sys.stderr)
+              raise SystemExit(1)
+          print("wheel ships", sorted(have))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target }}
+          path: dist
+
+  sdist:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist
+
+  publish-pypi:
+    needs: [wheels, sdist]
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      # Trusted publishing. No token lives in this repository.
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: astral-sh/setup-uv@v5
+      - run: uv publish -v dist/*
+
+  npm-packages:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          path: staged
+      # `build` uploads one archive per target. Lay them out as
+      # <dir>/<target>/<binary>, which is what the generator reads.
+      - name: Lay out the built binaries
+        shell: bash
+        run: |
+          mkdir -p bins
+          for d in staged/binaries-*; do
+            target="${d#staged/binaries-}"
+            mkdir -p "bins/$target"
+            find "$d" -type f -name "missouri" -exec cp {} "bins/$target/missouri" \;
+          done
+          ls -R bins
+      # The generator refuses an incomplete set. A wrapper naming a
+      # platform package that was never built resolves to nothing, and
+      # the failure lands on whoever installs it.
+      - name: Assemble the packages
+        run: node npm/generate.mjs msri missouri bins
+      - name: Check the wrapper runs
+        run: |
+          npm pack ./npm/msri --pack-destination /tmp
+          npm pack ./npm/cli-linux-x64-musl --pack-destination /tmp
+          mkdir -p /tmp/probe && cd /tmp/probe && npm init -y >/dev/null
+          npm install /tmp/*.tgz
+          npx msri --version
+          npx missouri --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: npm
+
+  publish-npm:
+    needs: npm-packages
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packages
+          path: npm
+      # Platform packages first, wrapper last. A wrapper published
+      # before its dependencies resolves to nothing for anyone who
+      # installs in that window.
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for d in npm/cli-*; do npm publish "$d" --access public --provenance; done
+          npm publish npm/msri --access public --provenance
+
   finalize:
-    needs: [build, publish-crate]
+    needs: [build, publish-crate, publish-pypi, publish-npm]
+    if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-latest
     permissions:
       contents: write
