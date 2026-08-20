@@ -1,3 +1,3 @@
-fn main() {
-    diataxis::build::embed_docs().expect("embed the documentation set");
+fn main() -> std::io::Result<()> {
+    diataxis::build::embed_docs()
 }
