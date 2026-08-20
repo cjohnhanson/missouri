@@ -78,8 +78,13 @@ github:
       # pull removes that skip on CI, so the backend stays covered.
       - name: pull the docker test image
         command: [docker, pull, "debian:bookworm-slim"]
+      # `run: false`, because this action runs `gaff ci` by default and
+      # that is the review check. Verify installs the binary the suite
+      # drives and runs the gate on nothing.
       - name: gaff
         uses: cjohnhanson/gaff@main
+        with:
+          run: "false"
       - name: formatting
         command: [cargo, fmt, --all, --check]
       - name: clippy
