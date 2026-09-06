@@ -62,16 +62,32 @@ subjective evaluation to an LLM.
 
 ## Install
 
-From the first published release onward:
+Pick the line for a tool you already use. Every one installs the same
+binary. Each gives you both the `missouri` and `msri` commands.
+
+Run it without installing:
+
+```sh
+uvx msri
+npx msri
+```
+
+Install it for good:
 
 ```sh
 cargo install missouri
+uv tool install msri
+npm install -g msri
+brew install cjohnhanson/tap/missouri
 ```
 
-A tagged release also carries a prebuilt binary for macOS and Linux,
-on x86-64 and arm64. Take the archive for your platform from the
-[releases page](https://github.com/cjohnhanson/missouri/releases) and
-put `missouri` on your `PATH`.
+The published name is `msri`, because `missouri` was already taken on PyPI.
+Both commands install together, so `missouri` is what you type.
+
+A tagged release also carries a prebuilt binary and the man page, for
+macOS and Linux on x86-64 and arm64. Take the archive for your platform
+from the [releases page](https://github.com/cjohnhanson/missouri/releases),
+put `missouri` on your `PATH`, and put `man/missouri.1` where `man` looks.
 
 To build from a checkout:
 
