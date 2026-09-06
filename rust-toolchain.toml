@@ -1,0 +1,10 @@
+# CI installed whatever `stable` meant on the day it ran, so a new Rust
+# release could turn the gate red on code nobody touched. A local clippy
+# run and the gate also disagreed: 1.95 passed a lint that 1.98 refused.
+#
+# Pinning both to one version makes a local green mean a green gate.
+# Raise this deliberately, and fix what the new version finds in the
+# same commit.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy", "rustfmt"]
