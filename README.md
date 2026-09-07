@@ -62,8 +62,8 @@ subjective evaluation to an LLM.
 
 ## Install
 
-Nothing is published yet. Every command here fails today. Each one works
-from the first tagged release.
+Nothing is published yet. Every line here fails today. Each one works from
+the first tagged release.
 
 To run it without an install:
 
@@ -81,21 +81,22 @@ npm install -g msri
 brew install cjohnhanson/tap/missouri
 ```
 
-The published name is `msri`, because `missouri` was taken. Both commands
-install together. Type `missouri`.
+On PyPI the name is `msri`, because `missouri` was taken. npm uses `msri`
+to match. On crates.io and in the tap it is `missouri`. The install puts
+both names on your path. Type `missouri`.
 
-A tagged release carries a prebuilt binary and the man page. Both cover
-macOS and Linux, on x86-64 and arm64. A release also carries a `.deb` for
-Debian and Ubuntu, on the same two architectures. Install a `.deb` with
-`dpkg -i`. A `.deb` is a file, not a repository, so `apt-get install`
-does not reach it. The
-[releases page](https://github.com/cjohnhanson/missouri/releases) holds all
-of them.
+A tagged release carries four archives: macOS and Linux, on x86-64 and
+arm64. Each archive holds a prebuilt binary and the man page. A release
+also carries a `.deb` for Debian and Ubuntu, on the same two
+architectures. Install a `.deb` with `dpkg -i`. A `.deb` is a file, not a
+repository, so `apt-get install` does not reach it. The [releases
+page](https://github.com/cjohnhanson/missouri/releases) holds all of them.
 
-A checkout does not build either. This crate needs two sibling crates
-that nobody has published, so `cargo install --git` cannot resolve them.
-Clone `mdstore` and `diataxis` beside this repository. Then name their
-paths in a `[patch.crates-io]` section, in `.cargo/config.toml`.
+A checkout does not build from a clone alone. `diataxis` is an unpublished
+dependency, so `cargo install --git` cannot resolve it. Clone `diataxis`
+and `mdstore` beside this repository. Then patch both in
+`.cargo/config.toml`, under `[patch.crates-io]`. The crate names there are
+`diataxis` and `mdstore-core`.
 
 ## Usage
 
