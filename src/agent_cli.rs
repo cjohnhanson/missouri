@@ -54,15 +54,15 @@ pub struct AgentConfig {
 
 impl AgentSpec {
     /// Parse a spec from YAML.
-    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yml::Error> {
-        serde_yml::from_str(yaml)
+    pub fn from_yaml(yaml: &str) -> Result<Self, yaml_serde::Error> {
+        yaml_serde::from_str(yaml)
     }
 
     /// Parse a spec from markdown with optional YAML frontmatter.
     ///
     /// Returns the spec and the body. A file with no frontmatter yields
     /// the default spec and the whole file as the body.
-    pub fn from_markdown(text: &str) -> Result<(Self, String), serde_yml::Error> {
+    pub fn from_markdown(text: &str) -> Result<(Self, String), yaml_serde::Error> {
         let Some(rest) = text.strip_prefix("---\n") else {
             return Ok((Self::default(), text.to_string()));
         };

@@ -58,7 +58,11 @@ ignore = "0.4"
 libc = "0.2"
 miette = { version = "7", features = ["fancy"] }
 serde = { version = "1", features = ["derive"] }
-serde_yml = "0.0"
+# The YAML reader four sibling tools and mdstore-core already use.
+# serde_yml stood here, and cargo-audit reports it and its libyml
+# unsound. A published tool carrying two unsound crates is a supply
+# chain its readers did not choose.
+yaml_serde = "0.10"
 tar = "0.4"
 tempfile = "3"
 thiserror = "2"

@@ -24,7 +24,7 @@ pub enum Error {
     ConfigParse {
         path: Utf8PathBuf,
         #[source]
-        source: serde_yml::Error,
+        source: yaml_serde::Error,
     },
 
     #[error("invalid config: {0}")]
