@@ -62,17 +62,17 @@ subjective evaluation to an LLM.
 
 ## Install
 
-There is no release yet, and no way to install this today. The commands
-below are what the first tagged release will provide. Each one fails now.
+Nothing is published yet. Every command here fails today. Each one works
+from the first tagged release.
 
-Run it without installing:
+To run it without an install:
 
 ```sh
 uvx msri
 npx msri
 ```
 
-Install it for good:
+To install it:
 
 ```sh
 cargo install missouri
@@ -81,21 +81,21 @@ npm install -g msri
 brew install cjohnhanson/tap/missouri
 ```
 
-A tagged release also carries a `.deb` for Debian and Ubuntu on x86-64
-and arm64, installed with `dpkg -i`. That is a file, not a repository, so
-`apt-get install` does not reach it.
+The published name is `msri`, because `missouri` was taken. Both commands
+install together. Type `missouri`.
 
-A tagged release will also carry a prebuilt binary and the man page, for
-macOS and Linux on x86-64 and arm64, on the
-[releases page](https://github.com/cjohnhanson/missouri/releases).
+A tagged release carries a prebuilt binary and the man page. Both cover
+macOS and Linux, on x86-64 and arm64. A release also carries a `.deb` for
+Debian and Ubuntu, on the same two architectures. Install a `.deb` with
+`dpkg -i`. A `.deb` is a file, not a repository, so `apt-get install`
+does not reach it. The
+[releases page](https://github.com/cjohnhanson/missouri/releases) holds all
+of them.
 
-Building from a checkout does not work either. This crate depends on two
-sibling crates that are not published, so `cargo install --git` cannot
-resolve them. Clone `mdstore` and `diataxis` beside this repository and
-point at them with a `[patch.crates-io]` section in `.cargo/config.toml`.
-
-The name to publish under is `msri`, because `missouri` was already
-taken. Both commands install together, so `missouri` is what you type.
+A checkout does not build either. This crate needs two sibling crates
+that nobody has published, so `cargo install --git` cannot resolve them.
+Clone `mdstore` and `diataxis` beside this repository. Then name their
+paths in a `[patch.crates-io]` section, in `.cargo/config.toml`.
 
 ## Usage
 
