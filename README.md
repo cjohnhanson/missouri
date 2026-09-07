@@ -62,47 +62,39 @@ subjective evaluation to an LLM.
 
 ## Install
 
-Nothing is published yet. Every line here fails today. Each one works from
-the first tagged release.
+The package is `msri` on PyPI and npm, because `missouri` was taken. The
+command is `missouri` everywhere, and both names install together.
 
-To run it without an install:
+Not released yet. Until the first tag, build from source:
 
 ```sh
-uvx msri
-npx msri
+cargo install --locked --git https://github.com/cjohnhanson/missouri
 ```
 
-To install it:
+Requires Rust 1.88 and a C compiler. macOS and Linux, x86-64 and arm64.
+
+From the first release onward:
 
 ```sh
-cargo install missouri
+cargo install --locked missouri
+brew install cjohnhanson/tap/missouri
 uv tool install msri
 npm install -g msri
-brew install cjohnhanson/tap/missouri
 ```
 
-On PyPI the name is `msri`, because `missouri` was taken. npm uses `msri`
-to match. On crates.io and in the tap it is `missouri`. The install puts
-both names on your path. Type `missouri`.
+Or run it without installing:
 
-A tagged release carries four archives: macOS and Linux, on x86-64 and
-arm64. Each archive holds a prebuilt binary and the man page. A release
-also carries a `.deb` for Debian and Ubuntu, on the same two
-architectures. Install a `.deb` with `dpkg -i`. A `.deb` is a file, not a
-repository, so `apt-get install` does not reach it. The [releases
-page](https://github.com/cjohnhanson/missouri/releases) holds all of them.
+```sh
+uvx msri run
+npx msri run
+```
 
-A source build needs two things. Rust 1.85 or later, because this crate
-is edition 2024. And a C compiler, because a dependency reads a remote
-over HTTPS and that TLS stack builds a C library. On Debian and Ubuntu
-that is `build-essential`; on macOS, the Xcode command line tools. A
-prebuilt binary needs neither.
+A release also carries prebuilt archives and a `.deb`, on the [releases
+page](https://github.com/cjohnhanson/missouri/releases). Each archive
+holds the binary and the man page. Install a `.deb` with `dpkg -i`: it
+is a file, not a repository, so `apt-get install` does not reach it.
 
-A checkout does not build from a clone alone. `diataxis` is an unpublished
-dependency, so `cargo install --git` cannot resolve it. Clone `diataxis`
-and `mdstore` beside this repository. Then patch both in
-`.cargo/config.toml`, under `[patch.crates-io]`. The crate names there are
-`diataxis` and `mdstore-core`.
+Check the install with `missouri --version`.
 
 ## Usage
 
