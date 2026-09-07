@@ -92,6 +92,12 @@ architectures. Install a `.deb` with `dpkg -i`. A `.deb` is a file, not a
 repository, so `apt-get install` does not reach it. The [releases
 page](https://github.com/cjohnhanson/missouri/releases) holds all of them.
 
+A source build needs two things. Rust 1.85 or later, because this crate
+is edition 2024. And a C compiler, because a dependency reads a remote
+over HTTPS and that TLS stack builds a C library. On Debian and Ubuntu
+that is `build-essential`; on macOS, the Xcode command line tools. A
+prebuilt binary needs neither.
+
 A checkout does not build from a clone alone. `diataxis` is an unpublished
 dependency, so `cargo install --git` cannot resolve it. Clone `diataxis`
 and `mdstore` beside this repository. Then patch both in
