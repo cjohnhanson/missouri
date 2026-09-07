@@ -62,6 +62,10 @@ subjective evaluation to an LLM.
 
 ## Install
 
+Nothing is published yet. Every line below works from the first
+tagged release onward, and none of them works before it. To use the tool
+today, build it from a checkout with the last command in this section.
+
 Pick the line for a tool you already use. Every one installs the same
 binary. Each gives you both the `missouri` and `msri` commands.
 
@@ -81,7 +85,7 @@ npm install -g msri
 brew install cjohnhanson/tap/missouri
 ```
 
-The published name is `msri`, because `missouri` was already taken on PyPI.
+The name to publish under is `msri`, because `missouri` was already taken on PyPI.
 Both commands install together, so `missouri` is what you type.
 
 A tagged release also carries a prebuilt binary and the man page, for

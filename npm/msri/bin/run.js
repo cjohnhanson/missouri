@@ -7,39 +7,39 @@
 // Nothing is downloaded at install time. There is no postinstall, so an
 // offline install, an air-gapped runner, and `--ignore-scripts` all work.
 const { platform, arch, env } = process;
-const { spawnSync, execSync } = require("child_process");
+const { spawnSync } = require("child_process");
 
-// `libc` in a platform package is a hint, and package managers disagree
-// about honouring it, so musl is detected here too.
-function isMusl() {
-  let stderr;
-  try {
-    stderr = execSync("ldd --version", { stdio: ["pipe", "pipe", "pipe"] });
-  } catch (err) {
-    stderr = err.stderr;
-  }
-  return String(stderr).indexOf("musl") > -1;
-}
-
+// The Linux binaries are static musl, which runs on a musl host and on
+// a glibc host alike. One Linux entry serves both, and no probe of the
+// host libc is needed.
 const PLATFORMS = {
   darwin: {
     arm64: "@msri/cli-darwin-arm64/missouri",
     x64: "@msri/cli-darwin-x64/missouri",
   },
-  "linux-musl": {
+  linux: {
     arm64: "@msri/cli-linux-arm64-musl/missouri",
     x64: "@msri/cli-linux-x64-musl/missouri",
   },
 };
 
-const key = platform === "linux" && isMusl() ? "linux-musl" : platform;
-const rel = env.MSRI_BINARY ? null : PLATFORMS?.[key]?.[arch];
-const bin = env.MSRI_BINARY || (rel && require.resolve(rel));
+const rel = env.MSRI_BINARY ? null : PLATFORMS?.[platform]?.[arch];
+let bin = env.MSRI_BINARY || null;
+if (!bin && rel) {
+  // A declared platform whose package did not install throws here.
+  // Unresolved is the same outcome as unsupported, so it takes the
+  // same message instead of a stack trace.
+  try {
+    bin = require.resolve(rel);
+  } catch {
+    bin = null;
+  }
+}
 
 if (!bin) {
   console.error(
     `msri ships no prebuilt binary for ${platform} ${arch}. ` +
-      "Install it with `cargo install msri`, or set MSRI_BINARY to a path."
+      "Install it with `cargo install missouri`, or set MSRI_BINARY to a path."
   );
   process.exitCode = 1;
 } else {
