@@ -78,10 +78,12 @@ Install it for good:
 cargo install missouri
 uv tool install msri
 npm install -g msri
+brew install cjohnhanson/tap/missouri
 ```
 
-Homebrew is not set up yet. No tap exists, and no release step builds
-one, so `brew install` will not work until that is built.
+A tagged release also carries a `.deb` for Debian and Ubuntu on x86-64
+and arm64, installed with `dpkg -i`. That is a file, not a repository, so
+`apt-get install` does not reach it.
 
 A tagged release will also carry a prebuilt binary and the man page, for
 macOS and Linux on x86-64 and arm64, on the
