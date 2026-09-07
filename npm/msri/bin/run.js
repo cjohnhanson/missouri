@@ -16,12 +16,12 @@ const os = require("os");
 // host libc is needed.
 const PLATFORMS = {
   darwin: {
-    arm64: "@msri/cli-darwin-arm64/missouri",
-    x64: "@msri/cli-darwin-x64/missouri",
+    arm64: "@cjohnhanson/msri-darwin-arm64/missouri",
+    x64: "@cjohnhanson/msri-darwin-x64/missouri",
   },
   linux: {
-    arm64: "@msri/cli-linux-arm64-musl/missouri",
-    x64: "@msri/cli-linux-x64-musl/missouri",
+    arm64: "@cjohnhanson/msri-linux-arm64-musl/missouri",
+    x64: "@cjohnhanson/msri-linux-x64-musl/missouri",
   },
 };
 
