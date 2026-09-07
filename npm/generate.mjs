@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 const argv = process.argv.slice(2);
 const partial = argv.includes("--partial");
 const [short, cmd, binRoot] = argv.filter((a) => a !== "--partial");
+// One scope holds every tool's platform packages.
+const SCOPE = "cjohnhanson";
 if (!short || !cmd || !binRoot) {
   console.error("usage: generate.mjs <short> <cmd> <dir-of-built-binaries>");
   process.exit(1);
@@ -46,7 +48,7 @@ wrapper.version = version;
 let made = 0;
 for (const t of TARGETS) {
   const suffix = t.libc ? `-${t.libc}` : "";
-  const name = `cli-${t.os}-${t.cpu}${suffix}`;
+  const name = `${short}-${t.os}-${t.cpu}${suffix}`;
   const src = resolve(binRoot, t.target, cmd);
   if (!existsSync(src)) {
     // Never leave a placeholder version behind. A wrapper that names a
@@ -59,13 +61,13 @@ for (const t of TARGETS) {
       process.exit(1);
     }
     console.error(`skip ${name}: no binary at ${src}`);
-    delete wrapper.optionalDependencies[`@${short}/${name}`];
+    delete wrapper.optionalDependencies[`@${SCOPE}/${name}`];
     continue;
   }
   const dir = resolve(here, name);
   mkdirSync(dir, { recursive: true });
   const manifest = {
-    name: `@${short}/${name}`,
+    name: `@${SCOPE}/${name}`,
     version,
     license: wrapper.license,
     os: [t.os],
@@ -76,7 +78,7 @@ for (const t of TARGETS) {
   copyFileSync(src, resolve(dir, cmd));
   // npm does not restore the execute bit.
   chmodSync(resolve(dir, cmd), 0o755);
-  wrapper.optionalDependencies[`@${short}/${name}`] = version;
+  wrapper.optionalDependencies[`@${SCOPE}/${name}`] = version;
   made += 1;
 }
 

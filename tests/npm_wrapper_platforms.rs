@@ -71,8 +71,8 @@ fn generated_package_names() -> Vec<String> {
         };
         let libc = between(line, "libc: \"", "\"");
         names.push(match libc {
-            Some(l) => format!("cli-{os}-{cpu}-{l}"),
-            None => format!("cli-{os}-{cpu}"),
+            Some(l) => format!("msri-{os}-{cpu}-{l}"),
+            None => format!("msri-{os}-{cpu}"),
         });
     }
     assert!(!names.is_empty(), "no targets parsed from npm/generate.mjs");
@@ -217,13 +217,13 @@ fn referenced_package_names() -> Vec<String> {
     let src = std::fs::read_to_string("npm/msri/bin/run.js").expect("wrapper");
     let mut names = Vec::new();
     for line in src.lines() {
-        let Some(rest) = line.split("@msri/").nth(1) else {
+        let Some(rest) = line.split("@cjohnhanson/").nth(1) else {
             continue;
         };
         let Some(name) = rest.split('/').next() else {
             continue;
         };
-        if name.starts_with("cli-") {
+        if name.starts_with("msri-") {
             names.push(name.to_string());
         }
     }
