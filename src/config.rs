@@ -258,13 +258,13 @@ fn default_true() -> bool {
 }
 
 /// Parse a state-level missouri.yml file from a string.
-pub fn parse_config(content: &str) -> Result<StateConfig, serde_yml::Error> {
-    serde_yml::from_str(content)
+pub fn parse_config(content: &str) -> Result<StateConfig, yaml_serde::Error> {
+    yaml_serde::from_str(content)
 }
 
 /// Parse a project-level missouri.yml file from a string.
-pub fn parse_project_config(content: &str) -> Result<ProjectConfig, serde_yml::Error> {
-    serde_yml::from_str(content)
+pub fn parse_project_config(content: &str) -> Result<ProjectConfig, yaml_serde::Error> {
+    yaml_serde::from_str(content)
 }
 
 #[cfg(test)]
