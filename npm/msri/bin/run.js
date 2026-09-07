@@ -9,6 +9,7 @@
 const { platform, arch, env } = process;
 const { spawnSync } = require("child_process");
 const { existsSync } = require("fs");
+const os = require("os");
 
 // The Linux binaries are static musl, which runs on a musl host and on
 // a glibc host alike. One Linux entry serves both, and no probe of the
@@ -61,6 +62,21 @@ if (bin && !existsSync(bin)) {
     shell: false,
     stdio: "inherit",
   });
-  if (result.error) throw result.error;
-  process.exitCode = result.status;
+  if (result.error) {
+    // A path that is a directory, or a file without the execute bit,
+    // fails here. Reported raw it is a ten-frame stack trace naming
+    // this file, which tells a reader nothing about their own setup.
+    console.error(`msri cannot run ${bin}: ${result.error.message}`);
+    process.exitCode = 1;
+  } else if (result.signal) {
+    // A binary killed by a signal has a null status. Assigning that
+    // null exits 0, so a crash reads as a pass to the git hooks and the
+    // continuous integration that call this. Report it the way a shell
+    // does, as 128 plus the signal number.
+    const number = os.constants.signals[result.signal];
+    console.error(`msri: ${bin} was killed by ${result.signal}`);
+    process.exitCode = number ? 128 + number : 1;
+  } else {
+    process.exitCode = result.status;
+  }
 }
