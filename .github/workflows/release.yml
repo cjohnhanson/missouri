@@ -14,12 +14,11 @@ on:
   # A dry run. Every build job runs and every publish job is skipped,
   # so the whole matrix can be exercised before a tag exists. A release
   # that first compiles on tag day is a guess, not a release.
+  # A dry run, and only ever a dry run. Every build job runs and nothing
+  # is uploaded. A dispatch carries no tag, so it has no version to
+  # publish and no release to attach: publishing from one reached three
+  # registries and then failed with the version permanently taken.
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Upload to the registries. Leave false to build only."
-        type: boolean
-        default: false
 
 # Least privilege at the top; each job widens only what it needs.
 permissions:
@@ -41,7 +40,7 @@ jobs:
       # point one at any commit. Requiring the commit to be on main
       # means a release carries what main carries, and nothing else.
       - name: Check the tag is on main
-        if: github.event_name == 'push' || inputs.publish
+        if: github.event_name == 'push'
         run: |
           git fetch --quiet origin main
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
@@ -50,7 +49,7 @@ jobs:
           fi
 
       - name: Check the tag matches Cargo.toml
-        if: github.event_name == 'push' || inputs.publish
+        if: github.event_name == 'push'
         run: |
           manifest="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           if [ "$manifest" != "${GITHUB_REF_NAME}" ]; then
@@ -199,7 +198,7 @@ jobs:
 
   publish-crate:
     needs: build
-    if: github.event_name == 'push' || inputs.publish
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       # `checkout` needs contents. A job that lists any permission
@@ -292,7 +291,7 @@ jobs:
 
   publish-pypi:
     needs: [build, wheels, sdist]
-    if: github.event_name == 'push' || inputs.publish
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       # Trusted publishing. No token lives in this repository.
@@ -354,7 +353,7 @@ jobs:
 
   publish-npm:
     needs: npm-packages
-    if: github.event_name == 'push' || inputs.publish
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -380,7 +379,7 @@ jobs:
 
   finalize:
     needs: [build, publish-crate, publish-pypi, publish-npm]
-    if: github.event_name == 'push' || inputs.publish
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
