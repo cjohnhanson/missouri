@@ -13,6 +13,10 @@ categories = ["development-tools::testing", "command-line-utilities"]
 # Repository machinery belongs on GitHub. A consumer installing the
 # crate gets the source, the license, and the README.
 exclude = [
+    # The npm wrapper and its generator are release machinery. The
+    # generated platform packages each hold a built binary, and one of
+    # those reached a crate before this line existed.
+    "npm/",
     ".tisket/",
     "tisket.yml",
     ".gaff/",
