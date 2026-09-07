@@ -8,6 +8,7 @@
 // offline install, an air-gapped runner, and `--ignore-scripts` all work.
 const { platform, arch, env } = process;
 const { spawnSync } = require("child_process");
+const { existsSync } = require("fs");
 
 // The Linux binaries are static musl, which runs on a musl host and on
 // a glibc host alike. One Linux entry serves both, and no probe of the
@@ -25,18 +26,31 @@ const PLATFORMS = {
 
 const rel = env.MSRI_BINARY ? null : PLATFORMS?.[platform]?.[arch];
 let bin = env.MSRI_BINARY || null;
+let unresolved = false;
 if (!bin && rel) {
-  // A declared platform whose package did not install throws here.
-  // Unresolved is the same outcome as unsupported, so it takes the
-  // same message instead of a stack trace.
+  // The platform is built, so a failure here means the package did not
+  // install. That is a different problem from an unsupported platform
+  // and it gets a different message.
   try {
     bin = require.resolve(rel);
   } catch {
-    bin = null;
+    unresolved = true;
   }
 }
 
-if (!bin) {
+// An override that does not exist is a reader's typo, not a platform
+// they are stuck on. It gets its own message naming the path.
+if (bin && !existsSync(bin)) {
+  console.error(`MSRI_BINARY is set to ${bin}, and no file is there.`);
+  process.exitCode = 1;
+} else if (unresolved) {
+  console.error(
+    `msri supports ${platform} ${arch}, and its binary package is not ` +
+      "installed. Reinstall, and if the install skipped optional " +
+      "dependencies, allow them."
+  );
+  process.exitCode = 1;
+} else if (!bin) {
   console.error(
     `msri ships no prebuilt binary for ${platform} ${arch}. ` +
       "Install it with `cargo install missouri`, or set MSRI_BINARY to a path."
