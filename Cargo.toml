@@ -2,10 +2,11 @@
 name = "missouri"
 version = "0.2.0"
 edition = "2024"
-# Edition 2024 needs 1.85. Without this line a consumer on an older
-# toolchain meets an edition error from inside this crate rather than a
-# version requirement it can act on.
-rust-version = "1.85"
+# 1.88, read from the graph rather than from the edition. Edition 2024
+# needs 1.85, and that floor is too low here: a locked dependency asks
+# for 1.88 itself. A floor that is too low is worse than none, because a
+# consumer takes it and meets an error from inside the crate anyway.
+rust-version = "1.88"
 description = "Show-me-state: e2e testing as directed graphs of filesystem states"
 license = "MIT"
 authors = ["Cody Hanson"]
