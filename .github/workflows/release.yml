@@ -197,7 +197,8 @@ jobs:
             --clobber
 
   publish-crate:
-    needs: build
+    # Every artifact, not only this one. See publish-npm.
+    needs: [build, wheels, sdist, npm-packages]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -290,7 +291,7 @@ jobs:
           path: dist
 
   publish-pypi:
-    needs: [build, wheels, sdist]
+    needs: [build, wheels, sdist, npm-packages]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -352,7 +353,11 @@ jobs:
           path: npm
 
   publish-npm:
-    needs: npm-packages
+    # Every artifact this release produces, so no registry takes a
+    # version while another build is still failing. A partial
+    # release cannot be repaired: a registry allows a yank and
+    # never a reuse.
+    needs: [build, wheels, sdist, npm-packages]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
