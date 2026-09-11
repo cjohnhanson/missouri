@@ -254,6 +254,31 @@ fn the_verify_job_holds_a_tag_to_main_and_to_the_manifest() {
 }
 
 #[test]
+fn the_npm_publish_restores_the_execute_bit_first() {
+    // actions/upload-artifact hands every downloaded file back at 644,
+    // and npm packs the mode it finds on disk. The generator's chmod
+    // therefore does not survive the trip to the publish job, and a
+    // platform package whose binary cannot exec fails every `npx` on a
+    // version no registry lets anyone reuse. The debs job restores the
+    // bit after the same round trip; this one has to as well.
+    let lines = job("publish-npm");
+    let chmod = lines
+        .iter()
+        .position(|l| l.contains("chmod +x"))
+        .expect("publish-npm never restores the execute bit the artifact dropped");
+    let publish = lines
+        .iter()
+        .position(|l| l.contains("npm publish"))
+        .expect("publish-npm does not publish");
+    assert!(chmod < publish, "the chmod runs after the publish");
+    assert!(
+        lines[chmod].contains(&format!("npm/{SHORT}-*/{BIN}")),
+        "the chmod does not name the generated platform binaries: {}",
+        lines[chmod].trim()
+    );
+}
+
+#[test]
 fn git_ignores_the_generator_output() {
     // A generated package holds a binary, and one staged by accident
     // ships inside the crate.

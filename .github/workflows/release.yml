@@ -392,6 +392,13 @@ jobs:
         with:
           name: npm-packages
           path: npm
+      # actions/upload-artifact carries no file permissions: every file
+      # comes back 644. The generator set 755 on each binary, and npm
+      # packs the mode it finds on disk, so without this the published
+      # package holds a binary that cannot exec. The debs job restores
+      # the bit after the same round trip for the same reason.
+      - name: Restore the execute bit the artifact dropped
+        run: chmod +x npm/msri-*/missouri
       # Platform packages first, wrapper last. A wrapper published
       # before its dependencies resolves to nothing for anyone who
       # installs in that window.
