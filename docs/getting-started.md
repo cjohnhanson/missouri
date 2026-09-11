@@ -6,7 +6,7 @@ type: tutorial
 
 # Getting Started with Missouri
 
-Missouri tests a CLI tool by modeling its behavior as a graph of filesystem states. A transition says that this command, run on these files, must produce those files. In this tutorial you build a two-state graph, watch it pass, add an assertion, and then watch it fail. Read [What is Missouri?](/missouri/what-is-missouri) for the concepts behind the model.
+Missouri tests a CLI tool by modeling its behavior as a graph of filesystem states. A transition says that this command, run on these files, must produce those files. In this tutorial you build a two-state graph, watch it pass, add an assertion, and then watch it fail. Read [What is Missouri?](what-is-missouri.md) for the concepts behind the model.
 
 ## Install missouri
 
@@ -114,7 +114,7 @@ The output looks like this:
 ✓ [1/1]
 PASS clean → built 14ms
 
-1 passed, 0 failed, 1 steps in 14ms
+1 passed, 0 failed, 1 step in 14ms
 ```
 
 Missouri found two states and one transition from `clean` to `built`. It ran the command. It then confirmed that the resulting filesystem matched the `built` state.
@@ -174,7 +174,7 @@ PASS clean → built 30ms
   ✓ clean → built (create output) 29ms
     ✓ assert: output contains hello 16ms
 
-1 passed, 0 failed, 1 steps, 1 assertions in 30ms
+1 passed, 0 failed, 1 step, 1 assertion in 30ms
 ```
 
 The assertion ran after the transition. It verified the file contents.
@@ -204,7 +204,7 @@ FAIL clean → built 22ms
       stdout expected: "goodbye\n"
       stdout actual:   "hello\n"
 
-0 passed, 1 failed, 1 steps, 1 assertions in 22ms
+0 passed, 1 failed, 1 step, 1 assertion in 22ms
 ```
 
 Missouri shows the exact mismatch. Change the value back to `"hello\n"` and the suite passes again.
@@ -214,7 +214,7 @@ A filesystem mismatch works the same way. Missouri reports the diff when the com
 ## Next steps
 
 - Add more states and chain the transitions into multi-step paths. Missouri finds every root-to-leaf path for you.
-- Add `comparators` to a transition to skip a volatile file or to run a custom diff command. Read the [CLI reference](/missouri/cli-reference) for the full `missouri.yml` schema.
+- Add `comparators` to a transition to skip a volatile file or to run a custom diff command. Read the [CLI reference](cli-reference.md) for the full `missouri.yml` schema.
 - Add `env` to a state or to the project config to set environment variables.
 - Put shared scripts in `.missouri/bin/`. Missouri adds that directory to PATH during a test run.
 - Use `--verbose` (`-v`) for detailed output. Use `--keep-temp` to read the temp directories that missouri creates.

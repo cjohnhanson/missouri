@@ -450,9 +450,11 @@ jobs:
   tap:
     # The formula renders on every run, from the build's own archives,
     # so a dispatch rehearses it. It pushes only after the three
-    # registries hold the version: a formula pushed earlier named a
-    # release that was still a draft, which a reader could not fetch.
-    needs: [build, publish-crate, publish-pypi, publish-npm]
+    # registries hold the version and finalize has cleared the draft
+    # flag: a draft release serves no asset to an anonymous reader, so
+    # a formula pushed before that named archives `brew` could not
+    # fetch.
+    needs: [build, publish-crate, publish-pypi, publish-npm, finalize]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -514,6 +516,7 @@ jobs:
           && needs.publish-crate.result == 'success'
           && needs.publish-pypi.result == 'success'
           && needs.publish-npm.result == 'success'
+          && needs.finalize.result == 'success'
         working-directory: tap
         run: |
           git config user.name "github-actions[bot]"
@@ -523,7 +526,7 @@ jobs:
           git push
 
   finalize:
-    needs: [build, debs, tap, publish-crate, publish-pypi, publish-npm]
+    needs: [build, debs, publish-crate, publish-pypi, publish-npm]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

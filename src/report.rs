@@ -244,6 +244,15 @@ fn print_env_diff(out: &mut impl Write, diff: &EnvDiff) {
     }
 }
 
+/// The word for a count: `1 step`, `2 steps`.
+fn plural(n: usize, word: &str) -> String {
+    if n == 1 {
+        word.to_string()
+    } else {
+        format!("{word}s")
+    }
+}
+
 fn print_summary(out: &mut impl Write, results: &[PathResult]) {
     let total = results.len();
     let passed = results.iter().filter(|r| r.passed).count();
@@ -260,10 +269,13 @@ fn print_summary(out: &mut impl Write, results: &[PathResult]) {
     // Summary line
     let mut parts = vec![format!("{passed} passed"), format!("{failed} failed")];
     if total_steps > 0 {
-        parts.push(format!("{total_steps} steps"));
+        parts.push(format!("{total_steps} {}", plural(total_steps, "step")));
     }
     if total_assertions > 0 {
-        parts.push(format!("{total_assertions} assertions"));
+        parts.push(format!(
+            "{total_assertions} {}",
+            plural(total_assertions, "assertion")
+        ));
     }
     writeln!(out, "{} in {}", parts.join(", "), fmt_duration(wall_time)).ok();
 

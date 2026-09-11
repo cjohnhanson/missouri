@@ -831,6 +831,6 @@ assertions:
 
 ## Further reading
 
-- [What is Missouri?](/missouri/what-is-missouri). How a state graph works, why missouri uses `env_clear`, and the comparison rules.
-- [CLI Reference](/missouri/cli-reference). The full command and config schema reference.
-- [Getting Started](/missouri/getting-started). Build your first test suite step by step.
+- [What is Missouri?](what-is-missouri.md). How a state graph works, why missouri uses `env_clear`, and the comparison rules.
+- [CLI Reference](cli-reference.md). The full command and config schema reference.
+- [Getting Started](getting-started.md). Build your first test suite step by step.

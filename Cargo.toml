@@ -28,14 +28,19 @@ exclude = [
     "tests/release_workflow.rs",
     "tests/npm_generate.rs",
     "tests/common/",
-    # Reads tests/fixtures/, dropped below.
+    # These read tests/fixtures/ and tests/missouri-msb/, dropped below.
     "tests/illinois.rs",
+    "tests/cli.rs",
+    "tests/microsandbox.rs",
     ".tisket/",
     "tisket.yml",
     ".gaff/",
     ".github/",
     ".agents/",
     "scripts/",
+    # Runs scripts/, dropped above.
+    "tests/prepublish_gate.rs",
+    "tests/missouri/",
     "tests/fixtures/",
     "tests/missouri-msb/",
     "CONTRIBUTING.md",
