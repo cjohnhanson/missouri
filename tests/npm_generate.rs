@@ -40,6 +40,30 @@ fn put_binary(root: &Path, target: &str) {
     std::fs::write(dir.join(CMD), "#!/bin/sh\necho stub\n").expect("stub binary");
 }
 
+/// The repository npm expects in a manifest published with provenance:
+/// the one Cargo.toml names, in npm's git URL form.
+fn repository_url() -> String {
+    let cargo = std::fs::read_to_string("Cargo.toml").expect("Cargo.toml");
+    let repo = cargo
+        .lines()
+        .find_map(|l| l.strip_prefix("repository = \""))
+        .and_then(|rest| rest.strip_suffix('"'))
+        .expect("Cargo.toml names a repository");
+    format!("git+{repo}.git")
+}
+
+#[test]
+fn the_wrapper_names_the_repository_cargo_names() {
+    // The registry checks the manifest's repository against the one
+    // the workflow publishes from, case-sensitively.
+    let wrapper =
+        std::fs::read_to_string(format!("npm/{SHORT}/package.json")).expect("wrapper manifest");
+    assert!(
+        wrapper.contains(&format!("\"url\": \"{}\"", repository_url())),
+        "the wrapper manifest names no repository, or another one: {wrapper}"
+    );
+}
+
 fn generate(root: &Path, extra: &[&str]) -> std::process::Output {
     Command::new("node")
         .arg("npm/generate.mjs")
@@ -80,7 +104,13 @@ fn a_partial_build_writes_one_package_npm_will_install() {
         return;
     }
     let root = scratch_repo("partial");
-    let first = &generated_targets()[0];
+    // A musl target, because that is where the generator wrote the
+    // `libc` field npm enforces; a darwin manifest never carried it.
+    let targets = generated_targets();
+    let first = targets
+        .iter()
+        .find(|t| t.package.ends_with("-musl"))
+        .expect("a musl target in the generator's list");
     put_binary(&root, &first.triple);
     let out = generate(&root, &["--partial"]);
     assert!(
@@ -104,6 +134,12 @@ fn a_partial_build_writes_one_package_npm_will_install() {
     assert!(
         !manifest.contains("libc"),
         "manifest carries libc: {manifest}"
+    );
+    // A publish with provenance needs the repository in every manifest,
+    // and the registry refuses one without it.
+    assert!(
+        manifest.contains(&format!("\"url\": \"{}\"", repository_url())),
+        "manifest names no repository for provenance: {manifest}"
     );
     #[cfg(unix)]
     {

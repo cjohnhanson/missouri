@@ -188,6 +188,6 @@ command inside a nix shell, or inside a Docker container of its own.
 
 ## Getting started
 
-Read [Getting Started](/missouri/getting-started) for the setup steps and
+Read [Getting Started](getting-started.md) for the setup steps and
 a walkthrough of your first test. Read
-[CLI Reference](/missouri/cli-reference) for the CLI commands.
+[CLI Reference](cli-reference.md) for the CLI commands.

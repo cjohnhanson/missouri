@@ -194,9 +194,9 @@ missouri docgen [OPTIONS]
 
 ### `missouri serve`
 
-Not implemented yet. The command checks that a recorded run exists, then
-prints a message. To read a report, run `missouri report --format html`
-and open the file it writes.
+Not implemented yet. The command checks that a recorded run exists,
+prints a message on stderr, and exits 1. To read a report, run
+`missouri report --format html` and open the file it writes.
 
 ```
 missouri serve [OPTIONS]
@@ -271,7 +271,7 @@ members:
 | `setup` | list of [SetupCommand](#setupcommand) | `[]` | Commands to run before the test paths. |
 | `packages` | list of string | `[]` | Nixpkgs packages for the sandbox. |
 | `members` | list of string | `[]` | Workspace member directories. |
-| `docker` | bool | `false` | Run every transition inside a Docker container with no network access. It overrides `packages`. |
+| `docker` | bool | `false` | Run every transition inside a Docker container with no network access. It overrides `packages`. An assertion, a comparator, and a service run on the host, so missouri refuses each under `docker: true`. |
 | `docker_image` | string | `debian:bookworm-slim` | The image the containers run. Requires `docker: true`. |
 
 #### SetupCommand
@@ -337,6 +337,16 @@ assertions:
 ```
 
 An empty config (`{}`) is valid. It declares a terminal state with no outgoing transitions and no assertions.
+
+#### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `env` | map | `{}` | Environment variables for this state. Missouri merges them over the project-level env, and a state variable of the same name wins. |
+| `transitions` | list of [Transition](#transition) | `[]` | The transitions out of this state. |
+| `assertions` | list of [Assertion](#assertion) | `[]` | The assertions that check this state. |
+| `entrypoint` | bool | `false` | When true, this state's fixture is a complete start point. A path can begin here, and a path that arrives here stops. |
+| `doc` | string | (none) | Prose that describes this state. `missouri docgen` renders it before the state's file tree. |
 
 #### Transition
 
