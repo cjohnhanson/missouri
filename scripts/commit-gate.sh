@@ -13,15 +13,16 @@ if ! git diff --quiet -- '*.rs' 2>/dev/null; then
 fi
 
 echo "commit-gate: cargo fmt --check"
-cargo fmt --check >/dev/null || {
+cargo fmt --all --check >/dev/null || {
 	echo "commit-gate: the tree is not formatted. Run: cargo fmt" >&2
 	exit 1
 }
 
 # `-D warnings` turns every warning into a failure, so the exit code
-# decides and nothing parses the output.
+# decides and nothing parses the output. The flags match the CI
+# workflows, so a local green is a CI green.
 echo "commit-gate: cargo clippy"
-out=$(cargo clippy --workspace --all-targets --quiet -- -D warnings 2>&1) || {
+out=$(cargo clippy --workspace --all-targets --all-features --quiet -- -D warnings 2>&1) || {
 	echo "commit-gate: clippy is not clean. Every warning fails this gate." >&2
 	printf '%s\n' "$out" | tail -30 >&2
 	exit 1

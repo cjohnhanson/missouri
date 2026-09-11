@@ -9,6 +9,8 @@
 /// One target the generator builds: the node platform and architecture
 /// it serves, and the package name it writes.
 pub struct Target {
+    /// The Rust target triple, which names the built binary's directory.
+    pub triple: String,
     pub os: String,
     pub cpu: String,
     pub package: String,
@@ -20,6 +22,9 @@ pub fn generated_targets() -> Vec<Target> {
     let src = std::fs::read_to_string("npm/generate.mjs").expect("generator");
     let mut targets = Vec::new();
     for line in src.lines() {
+        let Some(triple) = between(line, "target: \"", "\"") else {
+            continue;
+        };
         let Some(os) = between(line, "os: \"", "\"") else {
             continue;
         };
@@ -31,7 +36,12 @@ pub fn generated_targets() -> Vec<Target> {
             || format!("msri-{os}-{cpu}"),
             |l| format!("msri-{os}-{cpu}-{l}"),
         );
-        targets.push(Target { os, cpu, package });
+        targets.push(Target {
+            triple,
+            os,
+            cpu,
+            package,
+        });
     }
     assert!(
         !targets.is_empty(),
