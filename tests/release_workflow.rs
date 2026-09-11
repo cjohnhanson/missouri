@@ -254,6 +254,28 @@ fn the_verify_job_holds_a_tag_to_main_and_to_the_manifest() {
 }
 
 #[test]
+fn a_dispatch_publishes_nothing() {
+    // `workflow_dispatch` is documented as a dry run and only a dry
+    // run, and the whole mechanism is one line on each job that can
+    // reach a registry or the release. A rehearsal that published
+    // would take a version no registry lets anyone reuse.
+    for name in [
+        "create-release",
+        "publish-crate",
+        "publish-pypi",
+        "publish-npm",
+        "finalize",
+    ] {
+        assert!(
+            job(name)
+                .iter()
+                .any(|l| l.trim() == "if: github.event_name == 'push'"),
+            "job {name} can run on a dispatch, which is documented to publish nothing"
+        );
+    }
+}
+
+#[test]
 fn the_npm_publish_restores_the_execute_bit_first() {
     // actions/upload-artifact hands every downloaded file back at 644,
     // and npm packs the mode it finds on disk. The generator's chmod
