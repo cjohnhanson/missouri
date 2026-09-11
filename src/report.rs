@@ -267,7 +267,8 @@ fn print_summary(out: &mut impl Write, results: &[PathResult]) {
     }
     writeln!(out, "{} in {}", parts.join(", "), fmt_duration(wall_time)).ok();
 
-    // Show CPU time if significantly different from wall time (parallel execution)
+    // Under parallel execution the two diverge. Show CPU time when it
+    // runs more than five seconds ahead of wall time.
     if cpu_time > wall_time + Duration::from_secs(5) {
         writeln!(out, "  (total CPU time: {})", fmt_duration(cpu_time)).ok();
     }
@@ -295,7 +296,8 @@ fn print_summary(out: &mut impl Write, results: &[PathResult]) {
         }
     }
 
-    // Slowest assertions (only if any are notably slow)
+    // Slowest assertions. The section appears when the slowest one takes
+    // more than a second, and it lists those over 500ms.
     let mut assertions: Vec<(&str, Duration)> = results
         .iter()
         .flat_map(|r| &r.steps)

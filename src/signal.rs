@@ -10,7 +10,7 @@ static FORCE_EXIT: AtomicBool = AtomicBool::new(false);
 /// than any real test run needs.
 const MAX_CHILDREN: usize = 64;
 static CHILD_PIDS: [AtomicU32; MAX_CHILDREN] = {
-    // const initializer — can't use a loop, so use a macro
+    // A const initializer cannot use a loop, so a macro builds the array.
     macro_rules! zeros {
         ($($i:expr),*) => { [$(AtomicU32::new({ let _ = $i; 0 })),*] }
     }
@@ -47,7 +47,8 @@ pub fn register_child(pid: u32) -> usize {
             return i;
         }
     }
-    // Every slot is full. 64 slots make this unlikely. Do not panic.
+    // Every slot is full, which 64 slots make unlikely. Return slot 0
+    // rather than panic.
     0
 }
 
@@ -69,7 +70,8 @@ pub fn kill_all_children(sig: i32) {
 }
 
 /// Spawn a command and register its PID for signal handling. Wait for the
-/// output, then clear the PID registration. This replaces `.output()`.
+/// output, then clear the PID registration. Use this instead of
+/// `.output()`.
 pub fn run_tracked(cmd: &mut Command) -> io::Result<Output> {
     let child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
     let slot = register_child(child.id());

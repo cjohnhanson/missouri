@@ -5,6 +5,9 @@
 //! green: the table held only a musl key, and a glibc host fell
 //! through to the refusal. These tests drive the real file with node.
 
+mod common;
+
+use common::{generated_package_names, generated_targets};
 use std::process::Command;
 
 fn node_available() -> bool {
@@ -13,6 +16,12 @@ fn node_available() -> bool {
 
 /// Run the wrapper with a forced platform and architecture.
 fn run_for(platform: &str, arch: &str) -> String {
+    run_for_with(platform, arch, &[])
+}
+
+/// Run the wrapper with a forced platform and architecture, plus
+/// environment for node.
+fn run_for_with(platform: &str, arch: &str, envs: &[(&str, &str)]) -> String {
     let script = format!(
         "Object.defineProperty(process, 'platform', {{ value: '{platform}' }});\n\
          Object.defineProperty(process, 'arch', {{ value: '{arch}' }});\n\
@@ -20,6 +29,7 @@ fn run_for(platform: &str, arch: &str) -> String {
     );
     let out = Command::new("node")
         .args(["-e", &script])
+        .envs(envs.iter().copied())
         .output()
         .expect("node runs");
     format!(
@@ -56,34 +66,43 @@ fn every_built_platform_is_in_the_table() {
     }
 }
 
-/// The package names `npm/generate.mjs` builds, read from its target
-/// list. It composes each as `cli-<os>-<cpu>` plus `-<libc>` where the
-/// target names one.
-fn generated_package_names() -> Vec<String> {
-    let src = std::fs::read_to_string("npm/generate.mjs").expect("generator");
-    let mut names = Vec::new();
-    for line in src.lines() {
-        let Some(os) = between(line, "os: \"", "\"") else {
-            continue;
-        };
-        let Some(cpu) = between(line, "cpu: \"", "\"") else {
-            continue;
-        };
-        let libc = between(line, "libc: \"", "\"");
-        names.push(match libc {
-            Some(l) => format!("msri-{os}-{cpu}-{l}"),
-            None => format!("msri-{os}-{cpu}"),
-        });
+#[test]
+fn each_platform_execs_the_package_built_for_it() {
+    if !node_available() {
+        return;
     }
-    assert!(!names.is_empty(), "no targets parsed from npm/generate.mjs");
-    names
-}
-
-fn between(line: &str, open: &str, close: &str) -> Option<String> {
-    let start = line.find(open)? + open.len();
-    let rest = &line[start..];
-    let end = rest.find(close)?;
-    Some(rest[..end].to_string())
+    // A name-set comparison passes with the darwin arm64 and x64 entries
+    // swapped: both sets still match, and the wrapper execs a binary the
+    // host cannot run. This installs a stub for every package the
+    // generator builds, each printing its own package name, and reads
+    // which one the wrapper execs for each platform.
+    let root = std::env::temp_dir().join("msri_platform_probe");
+    for t in generated_targets() {
+        let dir = root.join("@cjohnhanson").join(&t.package);
+        std::fs::create_dir_all(&dir).expect("stub dir");
+        let stub = dir.join("missouri");
+        std::fs::write(&stub, format!("#!/bin/sh\necho {}\n", t.package)).expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
+    }
+    // NODE_PATH is node's own extra lookup root for a bare specifier, so
+    // the wrapper's require.resolve finds the stubs without a copy of
+    // the wrapper or a node_modules under the repository.
+    let node_path = root.to_str().expect("utf8");
+    for t in generated_targets() {
+        let out = run_for_with(&t.os, &t.cpu, &[("NODE_PATH", node_path)]);
+        assert_eq!(
+            out.trim(),
+            t.package,
+            "{} {} should exec {}, the package the generator builds for it",
+            t.os,
+            t.cpu,
+            t.package
+        );
+    }
 }
 
 #[test]
