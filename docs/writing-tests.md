@@ -91,7 +91,7 @@ members:
 | `packages` | list | `[]` | Nix packages to provide through `nix shell` |
 | `test_dir` | string | none | The directory where state discovery starts, relative to the config |
 | `members` | list | `[]` | Workspace member directories |
-| `docker` | bool | `false` | Run every transition inside a Docker container with no network access. It overrides `packages` |
+| `docker` | bool | `false` | Run every transition inside a Docker container with no network access. It overrides `packages`. An assertion, a comparator, and a service run on the host, so each is refused under `docker: true` |
 | `docker_image` | string | `debian:bookworm-slim` | The image the containers run. Requires `docker: true` |
 
 ### Setup commands
@@ -352,7 +352,8 @@ assertions:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | auto-generated | A label for the output |
-| `command` | string | **required** | The command to run |
+| `command` | string | none | The command to run. Required unless you set `agent` |
+| `agent` | string | none | The agent eval name, `<config_dir>/<name>.md`. Conflicts with `command` |
 | `shell` | bool | `true` | Run the command through `sh -c` |
 | `stdout` | string | none | The exact stdout to expect |
 | `stderr` | string | none | The exact stderr to expect |

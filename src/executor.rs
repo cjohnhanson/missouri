@@ -1735,6 +1735,22 @@ fn run_single_assertion(
     graph: &StateGraph,
     sandbox: &dyn Backend,
 ) -> AssertionResult {
+    // The Docker backend runs a command through the Docker API and has no
+    // host Command to build, so an assertion has nowhere to run.
+    if sandbox.is_docker() {
+        return AssertionResult {
+            name: assertion.name.clone(),
+            passed: false,
+            exit_code: None,
+            stdout_diff: None,
+            stderr_diff: None,
+            error: Some(format!(
+                "assertion '{}' cannot run with docker: true; an assertion runs on the host",
+                assertion.name
+            )),
+            duration: Duration::ZERO,
+        };
+    }
     // An agent assertion runs as `missouri agent eval <name>`. That command
     // exits 0 when the eval passes and 1 when it fails, so the exit code
     // decides the result here.

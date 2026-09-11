@@ -14,8 +14,10 @@ say() { printf '  %-46s %s\n' "$1" "$2"; }
 run() {
 	label="$1"
 	shift
-	out=$("$@" 2>&1)
-	if [ $? -eq 0 ]; then
+	# The assignment sits in the `if` test, where `set -e` does not
+	# fire. As a plain statement, a failing check exited the script
+	# before the else branch could print anything.
+	if out=$("$@" 2>&1); then
 		say "$label" ok
 	else
 		say "$label" FAILS
