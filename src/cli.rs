@@ -59,7 +59,7 @@ pub enum Command {
     /// Generate a report from recorded runs
     Report(ReportArgs),
 
-    /// Serve an HTML report locally
+    /// Serve an HTML report locally (not implemented yet)
     Serve(ServeArgs),
 
     /// Browse bundled documentation
@@ -499,7 +499,9 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             let _run_dir =
                 crate::recorder::find_run_dir(&dir, config_dir, serve_args.run.as_deref())?;
             // Serve is a placeholder. It only checks that a run exists.
-            println!("serving on http://localhost:{}", serve_args.port);
+            println!(
+                "serve is not implemented yet. Write the report with `missouri report --format html`."
+            );
             Ok(true)
         }
 
@@ -629,7 +631,7 @@ fn run_agent_eval(eval_args: &AgentEvalArgs, config_dir: &str) -> miette::Result
         let json = serde_json::to_string(&input).into_diagnostic()?;
         let _ = writeln!(stdin, "{json}");
         let _ = stdin.flush();
-        // Drop stdin to signal EOF — the agent reads the prompt and runs.
+        // Drop stdin to signal EOF. The agent reads the prompt and runs.
         drop(stdin);
     }
 
@@ -644,7 +646,7 @@ fn run_agent_eval(eval_args: &AgentEvalArgs, config_dir: &str) -> miette::Result
                 Ok(true)
             } else {
                 let details = verdict.details.as_deref().unwrap_or("(no details)");
-                eprintln!("verdict: FAIL — {details}");
+                eprintln!("verdict: FAIL: {details}");
                 Ok(false)
             }
         }

@@ -101,11 +101,13 @@ pub struct SetupCommand {
 /// Sandbox configuration parsed from project-level missouri.yml.
 #[derive(Debug, Clone)]
 pub enum SandboxConfig {
-    /// No sandbox — bare execution with env_clear + manual PATH.
+    /// No sandbox. Runs each command after env_clear, with a PATH built by
+    /// hand.
     None,
     /// Packages to make available via `nix shell`.
     Packages(Vec<String>),
-    /// Run transitions inside Docker containers with hermetic isolation.
+    /// Run each transition inside a Docker container that has no network
+    /// access.
     Docker { image: Option<String> },
 }
 
@@ -178,16 +180,13 @@ impl StateGraph {
     /// Discover all states under `root` and build the graph.
     /// `config_dir` is the name of the config directory (e.g., ".missouri").
     ///
-    /// Loads the config from one of two locations, in this order:
-    /// 1. `<root>/missouri.yml` — the root-level config. It can set
-    ///    `test_dir` to another directory.
-    /// 2. `<root>/<config_dir>/missouri.yml` — the config-dir-level config.
-    ///    This is the original location.
+    /// Reads the project config from `<root>/missouri.yml`, or from
+    /// `<root>/<config_dir>/missouri.yml` when the first one is absent.
+    /// See `load_project_config`.
     pub fn discover(root: &Utf8Path, config_dir: &str) -> Result<Self> {
         let root = root.canonicalize_utf8().map_err(Error::Io)?;
 
         // Phase 0: Load project-level config
-        // Check root-level missouri.yml first, then fall back to <config_dir>/missouri.yml
         let (project_env, setup, project_bin, sandbox_config, state_root) =
             load_project_config(&root, config_dir)?;
 
@@ -420,9 +419,9 @@ type ProjectConfigResult = (
 );
 
 /// Load the project-level config. Check two locations, in this order:
-/// 1. `<root>/missouri.yml` — the root-level config. It can include
+/// 1. `<root>/missouri.yml`, the root-level config. It can include
 ///    `test_dir`.
-/// 2. `<root>/<config_dir>/missouri.yml` — the config-dir-level config.
+/// 2. `<root>/<config_dir>/missouri.yml`, the config-dir-level config.
 ///
 /// `state_root` in the result is the directory where state discovery
 /// starts. It differs from `root` when a root-level missouri.yml sets
@@ -543,7 +542,7 @@ fn collect_states(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         if entry.file_type()?.is_dir() {
             let name = path.file_name().unwrap_or("");
-            // Skip hidden dirs (except we already checked config dir above)
+            // Skip hidden dirs. The check above already read the config dir.
             if name.starts_with('.') {
                 continue;
             }
@@ -568,7 +567,8 @@ fn resolve_file_comparators(t: &TransitionConfig) -> Vec<(Utf8PathBuf, FileCompa
                     command: cmd.clone(),
                 }
             } else {
-                // No override specified — shouldn't appear, but treat as no-op
+                // The entry sets neither `ignore` nor `command`. Treat it
+                // as a no-op.
                 return (
                     fc.path.clone(),
                     FileComparator::Custom {
@@ -769,13 +769,13 @@ transitions:
 
         let graph = StateGraph::discover(root, ".missouri").unwrap();
 
-        // Find state "a" — should have merged env
+        // Find state "a". Its env should be merged.
         let state_a = graph.states.iter().find(|s| s.name == "a").unwrap();
         assert_eq!(state_a.env["PROJECT_VAR"], "from_project");
         assert_eq!(state_a.env["OVERRIDE_ME"], "state_value");
         assert_eq!(state_a.env["STATE_VAR"], "only_in_state");
 
-        // State "b" has no state env — should inherit project env
+        // State "b" has no state env, so it inherits the project env.
         let state_b = graph.states.iter().find(|s| s.name == "b").unwrap();
         assert_eq!(state_b.env["PROJECT_VAR"], "from_project");
         assert_eq!(state_b.env["OVERRIDE_ME"], "project_value");
@@ -874,7 +874,7 @@ transitions:
 
     #[test]
     fn discover_no_project_config_is_fine() {
-        // No root-level missouri.yml — everything should still work
+        // No root-level missouri.yml. Everything should still work.
         let tmp = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(tmp.path()).unwrap();
 
@@ -896,7 +896,7 @@ transitions:
 
     #[test]
     fn discover_root_level_missouri_yml() {
-        // Root-level missouri.yml (no test_dir) — project config lives at root
+        // Root-level missouri.yml with no test_dir. The project config lives at the root.
         let tmp = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(tmp.path()).unwrap();
 
@@ -1055,7 +1055,7 @@ transitions:
 
     #[test]
     fn discover_test_dir_missing_errors() {
-        // test_dir points to a nonexistent directory — should error
+        // test_dir points to a nonexistent directory, so discovery errors.
         let tmp = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(tmp.path()).unwrap();
 
@@ -1170,7 +1170,7 @@ transitions:
 
     #[test]
     fn discover_test_dir_bin_in_test_dir() {
-        // bin/ exists in test_dir's .missouri — should be found
+        // bin/ exists in test_dir's .missouri, so the loader finds it.
         let tmp = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(tmp.path()).unwrap();
 
@@ -1329,7 +1329,7 @@ transitions:
 
     #[test]
     fn discover_test_dir_bin_falls_back_to_root() {
-        // bin/ exists in root's .missouri but not in test_dir — should fall back
+        // bin/ exists in root's .missouri but not in test_dir, so the loader falls back.
         let tmp = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(tmp.path()).unwrap();
 

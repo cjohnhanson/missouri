@@ -22,18 +22,21 @@ are credited unless you ask otherwise.
 
 ## Scope
 
-missouri runs end-to-end tests as directed graphs of filesystem states. It executes commands a test declares, and it drives Docker to sandbox them.
+missouri runs end-to-end tests as directed graphs of filesystem states.
+It runs the commands a test declares, and it can drive Docker to contain
+them.
 
-A test declaration is executable input. A suite from a repository a person did not write runs its commands, so what a declaration can reach is the boundary worth attacking.
+A `missouri.yml` file is executable input. A person who runs a suite from
+a repository they did not write runs its commands. A report should say
+how far one declaration can reach.
 
 In scope:
 
-- A document, a declaration, or a name reaching outside the directory
-  it should be confined to.
-- A fetch reaching a host or a path that no declaration named.
-- Reading untrusted content leading to code execution.
 - A test declaration reaching a path outside the sandbox it was given.
-- A comparator or a service command escaping the backend that should contain it.
+- A comparator or a service command escaping the backend that should
+  contain it.
+- A request reaching a host or a path that no declaration named.
+- Parsing a config file leading to code execution.
 
 Out of scope:
 
@@ -44,6 +47,7 @@ Out of scope:
 
 ## Known boundaries
 
-Documented limits are not vulnerabilities. `src/confined.rs` carries a
-`# What this does not cover` section in its module documentation. Read
-it before reporting a traversal issue.
+Missouri runs a transition command on the host, as the user who started
+missouri, unless the project config sets `docker: true`. A `packages`
+list puts the command in a nix shell, which supplies programs and does
+not confine them. Neither is a vulnerability.

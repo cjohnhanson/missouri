@@ -8,6 +8,12 @@ uv.lock
 # Empty plugin type dirs created non-deterministically by meltano
 meltano-project/plugins/utilities/
 
+# `meltano add` writes the plugin's definition from MeltanoHub into a
+# lock file under plugins/, so the file changes whenever the hub does.
+# The transition checks that the plugin is added, and meltano.yml
+# carries that.
+meltano-project/plugins/*/*.lock
+
 # uv scaffolding drifts by uv version (src/ vs flat layout, the authors
 # field from git config, the python-version-dependent requires-python).
 # The assertions verify the real behavior, so uv's boilerplate is not

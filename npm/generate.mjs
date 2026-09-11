@@ -3,9 +3,9 @@
 // each carrying the binary for that platform.
 //
 // The version comes from Cargo.toml, so the wrapper and every platform
-// package carry the same string and cannot drift. Biome learned this by
-// pinning exact versions rather than carets; a caret lets a wrapper
-// pair with a binary it was not built against.
+// package carry the same string and cannot drift. The pins are exact.
+// A caret would let a wrapper pair with a binary it was not built
+// against.
 //
 // Run after the release binaries exist:
 //   node npm/generate.mjs <short> <cmd> <dir-of-built-binaries>
