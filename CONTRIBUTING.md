@@ -16,6 +16,9 @@ cargo build
 cargo test --workspace --all-features
 ```
 
+Some tests need other programs on `PATH`: `node` for the npm wrapper,
+and `nix` for the illinois scenarios, which skip without it.
+
 ## Before a large change
 
 Open a GitHub issue first. A small fix needs none.

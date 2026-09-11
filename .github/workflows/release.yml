@@ -28,7 +28,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
+      # The full history, because the tag-on-main check below asks
+      # git for ancestry, and a shallow clone answers that wrong.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # A tag is the only trigger, and anyone who can push a tag can
       # point one at any commit. A tagged commit on main means a release
@@ -500,8 +504,16 @@ jobs:
           sed -i "s/^  version \".*\"$/  version \"${version}\"/" "$formula"
           grep -q PLACEHOLDER "$formula" && { echo "a checksum was not filled" >&2; exit 1; } || true
           cat "$formula"
+      # `!cancelled()` on the job drops the default success check on
+      # every job in `needs`, so this step requires the three publishes
+      # itself. Without that, a failed publish still pushed a formula
+      # for a release that stayed a draft.
       - name: Push the formula
-        if: github.event_name == 'push'
+        if: >-
+          github.event_name == 'push'
+          && needs.publish-crate.result == 'success'
+          && needs.publish-pypi.result == 'success'
+          && needs.publish-npm.result == 'success'
         working-directory: tap
         run: |
           git config user.name "github-actions[bot]"

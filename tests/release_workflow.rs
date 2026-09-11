@@ -146,8 +146,20 @@ fn a_dispatch_runs_the_deb_and_tap_jobs() {
         assert!(
             lines
                 .iter()
-                .any(|l| l.trim() == "if: github.event_name == 'push'"),
+                .any(|l| l.trim() == "if: github.event_name == 'push'"
+                    || l.trim() == "github.event_name == 'push'"),
             "job {name} has no step gated on a push, so a dispatch uploads"
+        );
+    }
+    // `!cancelled()` on the tap job drops the default success check on
+    // its `needs`, so the push step must require the publishes itself.
+    // Without that, a failed publish pushed a formula for a draft.
+    let tap = job("tap");
+    for publish in ["publish-crate", "publish-pypi", "publish-npm"] {
+        assert!(
+            tap.iter()
+                .any(|l| l.contains(&format!("needs.{publish}.result == 'success'"))),
+            "the tap job pushes without requiring {publish}"
         );
     }
 }
