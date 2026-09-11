@@ -183,6 +183,17 @@ jobs:
             target/${{ matrix.target }}/release/msri
           if-no-files-found: error
 
+      # The tap job reads its checksums from here. A draft release is
+      # invisible to a read-only token, and a dispatch has no release.
+      - name: Upload the archive and its checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.target }}
+          path: |
+            ${{ steps.archive.outputs.asset }}
+            ${{ steps.archive.outputs.asset }}.sha256
+          if-no-files-found: error
+
       - name: Attest the build provenance
         if: github.event_name == 'push'
         uses: actions/attest-build-provenance@v2
@@ -294,7 +305,10 @@ jobs:
           path: dist
 
   publish-pypi:
-    needs: [build, wheels, sdist, npm-packages]
+    # After the crate, and npm after this. In sequence, a registry that
+    # refuses stops the ones after it; in parallel, two would have taken
+    # the version while the third failed.
+    needs: publish-crate
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -355,11 +369,11 @@ jobs:
           path: npm
 
   publish-npm:
-    # Every artifact this release produces, so no registry takes a
-    # version while another build is still failing. A partial release
-    # cannot be repaired, because a registry allows a yank and never a
-    # reuse.
-    needs: [build, wheels, sdist, npm-packages]
+    # Last of the three registries; see publish-pypi. publish-crate
+    # already waited for every build, so no registry takes a version
+    # while a build is still failing. A partial release cannot be
+    # repaired: a registry allows a yank and never a reuse.
+    needs: publish-pypi
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -430,12 +444,17 @@ jobs:
 
 
   tap:
-    needs: build
-    # No job-level gate, for the reason under `debs`.
+    # The formula renders on every run, from the build's own archives,
+    # so a dispatch rehearses it. It pushes only after the three
+    # registries hold the version: a formula pushed earlier named a
+    # release that was still a draft, which a reader could not fetch.
+    needs: [build, publish-crate, publish-pypi, publish-npm]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - name: Check out the tap
         uses: actions/checkout@v4
         with:
@@ -444,17 +463,25 @@ jobs:
           # GITHUB_TOKEN reaches this repository only.
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
-      - name: Fill in the version and the checksums
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: archive-*
+          path: dl
+          merge-multiple: true
+      - name: Render the formula
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          fi
+          # The template lives in this repository, so every release
+          # starts from placeholders. Editing the tap's copy in place
+          # filled them once; the second release would have kept the
+          # first release's checksums and reported success.
           formula="tap/Formula/missouri.rb"
-          # A release asset is what the formula installs, so its own
-          # checksum is what the formula must carry. Reading them from
-          # the release means the two cannot disagree.
-          gh release download "${GITHUB_REF_NAME}" --pattern '*.tar.gz' --dir dl
+          cp homebrew/missouri.rb "$formula"
           declare -A slot=(
             [aarch64-apple-darwin]=PLACEHOLDER_DARWIN_ARM64
             [x86_64-apple-darwin]=PLACEHOLDER_DARWIN_X64
@@ -462,18 +489,17 @@ jobs:
             [x86_64-unknown-linux-musl]=PLACEHOLDER_LINUX_X64
           )
           for target in "${!slot[@]}"; do
-            # The archive name carries the tag. `build` assembles it as
-            # <bin>-<tag>-<target>.
-            file="dl/missouri-${GITHUB_REF_NAME}-${target}.tar.gz"
-            if [ ! -f "$file" ]; then
-              echo "no asset for ${target}" >&2
-              exit 1
-            fi
-            sum=$(sha256sum "$file" | cut -d' ' -f1)
+            # The build job writes the checksum of the archive it
+            # uploads, so the formula carries the sum of the file it
+            # will fetch.
+            sums=$(ls dl/missouri-*-"${target}".tar.gz.sha256)
+            [ "$(printf '%s\n' "$sums" | wc -l)" -eq 1 ] || { echo "expected one checksum for ${target}, found: ${sums}" >&2; exit 1; }
+            sum=$(cut -d' ' -f1 "$sums")
             sed -i "s/${slot[$target]}/${sum}/" "$formula"
           done
           sed -i "s/^  version \".*\"$/  version \"${version}\"/" "$formula"
           grep -q PLACEHOLDER "$formula" && { echo "a checksum was not filled" >&2; exit 1; } || true
+          cat "$formula"
       - name: Push the formula
         if: github.event_name == 'push'
         working-directory: tap

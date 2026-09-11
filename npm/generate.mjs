@@ -45,21 +45,26 @@ const wrapperDir = resolve(here, short);
 const wrapper = JSON.parse(readFileSync(resolve(wrapperDir, "package.json"), "utf8"));
 wrapper.version = version;
 
+// Refuse an incomplete set before writing anything. A wrapper that
+// names a platform package which was never built resolves to nothing,
+// and the failure lands on whoever installs it rather than here. A
+// refusal that came after the first package was written left that
+// package on disk. Pass --partial only for a local build of one target.
+if (!partial) {
+  const missing = TARGETS.map((t) => resolve(binRoot, t.target, cmd)).filter((p) => !existsSync(p));
+  if (missing.length > 0) {
+    for (const p of missing) console.error(`no binary at ${p}`);
+    console.error("build every target first, or pass --partial for a local check");
+    process.exit(1);
+  }
+}
+
 let made = 0;
 for (const t of TARGETS) {
   const suffix = t.libc ? `-${t.libc}` : "";
   const name = `${short}-${t.os}-${t.cpu}${suffix}`;
   const src = resolve(binRoot, t.target, cmd);
   if (!existsSync(src)) {
-    // Never leave a placeholder version behind. A wrapper that names a
-    // platform package which was never built resolves to nothing, and
-    // the failure lands on whoever installs it rather than here.
-    // Pass --partial only for a local build of one target.
-    if (!partial) {
-      console.error(`no binary at ${src}`);
-      console.error("build every target first, or pass --partial for a local check");
-      process.exit(1);
-    }
     console.error(`skip ${name}: no binary at ${src}`);
     delete wrapper.optionalDependencies[`@${SCOPE}/${name}`];
     continue;
@@ -72,7 +77,9 @@ for (const t of TARGETS) {
     license: wrapper.license,
     os: [t.os],
     cpu: [t.cpu],
-    ...(t.libc ? { libc: [t.libc] } : {}),
+    // No `libc` field. npm enforces it, and a static musl binary runs
+    // on a glibc host too; with the field, `npm install` on Ubuntu
+    // refused the package.
   };
   writeFileSync(resolve(dir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   copyFileSync(src, resolve(dir, cmd));
