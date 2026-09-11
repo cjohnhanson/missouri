@@ -24,8 +24,9 @@ exclude = [
     "npm/",
     # Drives npm/, dropped above, so it cannot run from the tarball.
     "tests/npm_wrapper_platforms.rs",
-    # Reads .github/ and npm/, both dropped.
+    # These read .github/ and npm/, both dropped.
     "tests/release_workflow.rs",
+    "tests/npm_generate.rs",
     "tests/common/",
     # Reads tests/fixtures/, dropped below.
     "tests/illinois.rs",

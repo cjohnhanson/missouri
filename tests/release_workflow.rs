@@ -80,44 +80,68 @@ fn npm_publish_globs_the_prefix_the_generator_writes() {
     );
 }
 
+/// The targets the build job's matrix lists.
+fn build_targets() -> Vec<String> {
+    let targets: Vec<String> = job("build")
+        .iter()
+        .filter_map(|l| l.trim().strip_prefix("- target: ").map(str::to_string))
+        .collect();
+    assert!(!targets.is_empty(), "no `- target:` line in the build job");
+    targets
+}
+
 #[test]
-fn the_tap_downloads_the_archive_the_build_uploads() {
-    // The build job names its archive once, and the tap job spells the
-    // same name a second time by hand. The two drifted: the tap read
-    // the name without the tag and exited 1 on every release.
+fn the_formula_names_the_archive_the_build_uploads() {
+    // The build job names its archive once. The formula fetches it by
+    // name from another repository, and the tap job renders the formula
+    // from the template here, so the template is where the two names
+    // can be read together. The first formula asked for
+    // <bin>-<target>.tar.gz while the build uploaded
+    // <bin>-<tag>-<target>.tar.gz, and brew would have met a 404.
     let src = workflow();
     assert!(
         src.contains(&format!("BIN_NAME: {BIN}")),
         "the workflow's BIN_NAME is not {BIN}"
     );
+    let template_path = format!("homebrew/{BIN}.rb");
+    assert!(
+        src.contains(&format!("cp {template_path} ")),
+        "the tap job does not render {template_path}"
+    );
+    let template = fs::read_to_string(&template_path).expect("the formula template");
     let staging = src
         .lines()
         .find_map(|l| between(l, "staging=\"", "\""))
         .expect("the build job's staging= line");
-    let uploaded = staging
-        .replace("${BIN_NAME}", BIN)
-        .replace("${{ matrix.target }}", "${target}");
-    let read = src
-        .lines()
-        .find_map(|l| between(l, "file=\"dl/", "\""))
-        .expect("the tap job's file=\"dl/ line");
-    assert_eq!(
-        read,
-        format!("{uploaded}.tar.gz"),
-        "the tap job reads an archive name the build job never uploads"
+    for target in build_targets() {
+        let archive = staging
+            .replace("${BIN_NAME}", BIN)
+            .replace("${GITHUB_REF_NAME}", "v#{version}")
+            .replace("${{ matrix.target }}", &target);
+        assert!(
+            template.contains(&format!("/v#{{version}}/{archive}.tar.gz\"")),
+            "{template_path} fetches no {archive}.tar.gz, which the build uploads"
+        );
+    }
+    // The checksum the tap reads is the build's own, per target.
+    assert!(
+        src.contains(&format!("dl/{BIN}-*-\"${{target}}\".tar.gz.sha256")),
+        "the tap job does not read the build's checksum files"
     );
 }
 
 #[test]
 fn a_dispatch_runs_the_deb_and_tap_jobs() {
-    // A dispatch rehearses the release. Gated at the job, these two were
-    // the ones it skipped, and both were broken while the rehearsal read
-    // green. The gate belongs on the upload step.
+    // A dispatch rehearses the release. Gated on the event at the job,
+    // these two were the ones it skipped, and both were broken while the
+    // rehearsal read green. The event gate belongs on the upload step.
     for name in ["debs", "tap"] {
         let lines = job(name);
         assert!(
-            !lines.iter().any(|l| l.starts_with("    if:")),
-            "job {name} carries a job-level if, so a dispatch skips it"
+            !lines
+                .iter()
+                .any(|l| l.starts_with("    if:") && l.contains("event_name")),
+            "job {name} gates on the event at the job, so a dispatch skips it"
         );
         assert!(
             lines
