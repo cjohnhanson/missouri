@@ -205,8 +205,8 @@ missouri serve [OPTIONS]
 | Flag | Description |
 |------|-------------|
 | `-d, --dir <DIR>` | Root directory containing states. Default: `.` |
-| `--run <ID>` | Specific run ID to serve. Default: latest. |
-| `--port <PORT>` | Port to serve on. Default: `8080`. |
+| `--run <ID>` | The run to check for. Default: latest. |
+| `--port <PORT>` | Accepted and unused. |
 
 ---
 
@@ -346,8 +346,8 @@ An empty config (`{}`) is valid. It declares a terminal state with no outgoing t
 | `command` | string | **required** | The command to run. |
 | `shell` | bool | `true` | Run the command through `sh -c`. When false, missouri splits the command on whitespace. |
 | `target` | string | **required** | The relative path to the target state directory. |
-| `stdout` | string | (none) | The exact stdout to expect. Missouri checks it in Full mode only. |
-| `stderr` | string | (none) | The exact stderr to expect. Missouri checks it in Full mode only. |
+| `stdout` | string | (none) | The exact stdout to expect. Missouri checks it in every mode. |
+| `stderr` | string | (none) | The exact stderr to expect. Missouri checks it in every mode. |
 | `services` | list of [Service](#services) | `[]` | Background services to run during this transition. |
 | `network` | [NetworkConfig](#network-interception) | (none) | The network interception config. |
 | `comparators` | [Comparators](#comparators) | (none) | Change how missouri compares specific files, environment variables, or network requests. |

@@ -24,6 +24,11 @@ exclude = [
     "npm/",
     # Drives npm/, dropped above, so it cannot run from the tarball.
     "tests/npm_wrapper_platforms.rs",
+    # Reads .github/ and npm/, both dropped.
+    "tests/release_workflow.rs",
+    "tests/common/",
+    # Reads tests/fixtures/, dropped below.
+    "tests/illinois.rs",
     ".tisket/",
     "tisket.yml",
     ".gaff/",
@@ -79,7 +84,7 @@ rayon = "1.11.0"
 regex = "1"
 sigpipe = "0.1.3"
 
-# The `docs` subcommand serves the pages under docs/. The build half
+# The `docs` subcommand prints the pages under docs/. The build half
 # reads docs/ and carries no dependencies.
 diataxis = { version = "0.1", default-features = false, features = ["cli"] }
 

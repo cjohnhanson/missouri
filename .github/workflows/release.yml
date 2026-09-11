@@ -128,9 +128,12 @@ jobs:
             cross: false
     steps:
       - uses: actions/checkout@v4
+      # rust-toolchain.toml selects the toolchain for every cargo call,
+      # and the action does not read that file. A target given to the
+      # action lands in `stable`, which nothing here compiles under.
+      # rustup adds it to the pinned toolchain when run in the repository.
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -397,11 +400,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # One artifact by name lands its files in `path` itself, with no
+      # subdirectory. A pattern download with merge-multiple flattened
+      # the same way, and a copy from staged/binaries-<target>/ found
+      # nothing.
       - uses: actions/download-artifact@v4
         with:
-          pattern: binaries-${{ matrix.target }}
+          name: binaries-${{ matrix.target }}
           path: staged
-          merge-multiple: true
       - name: Install cargo-deb
         run: cargo install cargo-deb --locked
       # A .deb attached to a release installs with `dpkg -i`. This is
@@ -411,8 +417,7 @@ jobs:
           # --no-build packages what is already on disk, so these lines
           # copy the build job's artifact into place first.
           mkdir -p "target/${{ matrix.target }}/release"
-          cp "staged/binaries-${{ matrix.target }}"/* \
-             "target/${{ matrix.target }}/release/"
+          cp staged/* "target/${{ matrix.target }}/release/"
           chmod +x "target/${{ matrix.target }}/release"/*
           cargo deb --target ${{ matrix.target }} --no-build --no-strip
       - name: Attach it to the release
