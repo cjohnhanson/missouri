@@ -311,7 +311,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
 
             let roots = graph.roots();
             if roots.is_empty() {
-                return Err(crate::error::Error::NoRoots.into());
+                return Err(no_entry_point(&graph, &dir).into());
             }
 
             let paths = crate::paths::enumerate_subgraph_paths(&graph);
@@ -439,7 +439,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
 
             let roots = graph.roots();
             if roots.is_empty() {
-                return Err(crate::error::Error::NoRoots.into());
+                return Err(no_entry_point(&graph, &dir).into());
             }
 
             println!(
@@ -547,7 +547,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             let graph = crate::graph::StateGraph::discover(&dir, config_dir).into_diagnostic()?;
             let roots = graph.roots();
             if roots.is_empty() {
-                return Err(crate::error::Error::NoRoots.into());
+                return Err(no_entry_point(&graph, &dir).into());
             }
 
             let paths = crate::paths::enumerate_subgraph_paths(&graph);
@@ -692,7 +692,7 @@ fn run_workspace_members(
 
         let roots = graph.roots();
         if roots.is_empty() {
-            return Err(crate::error::Error::NoRoots.into());
+            return Err(no_entry_point(&graph, member_dir).into());
         }
 
         let paths = crate::paths::enumerate_subgraph_paths(&graph);
@@ -787,7 +787,7 @@ fn validate_workspace_members(
 
         let roots = graph.roots();
         if roots.is_empty() {
-            return Err(crate::error::Error::NoRoots.into());
+            return Err(no_entry_point(&graph, member_dir).into());
         }
 
         println!(
@@ -798,6 +798,22 @@ fn validate_workspace_members(
         );
     }
     Ok(true)
+}
+
+/// The right refusal when no state can start a path.
+///
+/// An empty root set has two causes and they need different words. A
+/// graph whose states all have inbound transitions is a cycle. A
+/// directory with no states is not a graph at all, and naming a cycle
+/// there sends the reader after a transition that does not exist.
+fn no_entry_point(graph: &crate::graph::StateGraph, dir: &Utf8Path) -> crate::error::Error {
+    if graph.states.is_empty() {
+        crate::error::Error::NoStates {
+            dir: dir.to_path_buf(),
+        }
+    } else {
+        crate::error::Error::NoRoots
+    }
 }
 
 fn resolve_dir(dir: &Utf8PathBuf) -> miette::Result<camino::Utf8PathBuf> {
