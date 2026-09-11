@@ -1,6 +1,6 @@
 #!/bin/sh
 # The commit gate. A commit needs formatted code and a clippy run with
-# no warnings. Tests and the review note wait for the push gate.
+# no warnings. Tests and the review note wait for the merge gate.
 set -e
 
 # The checks read the working tree. When unstaged Rust changes differ

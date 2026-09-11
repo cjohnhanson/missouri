@@ -5,7 +5,12 @@
 # can take any other. cargo-hack reads the feature list from cargo
 # metadata and walks the powerset, so no combination goes unchecked.
 set -eu
-TC="${TOOLCHAIN:-1.98.0}"
+[ -f rust-toolchain.toml ] || {
+	echo "  prepublish: run this from the repository root, where rust-toolchain.toml is." >&2
+	exit 1
+}
+# The toolchain rust-toolchain.toml pins, so the version has one home.
+TC="${TOOLCHAIN:-$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)}"
 fail=0
 say() { printf '  %-46s %s\n' "$1" "$2"; }
 
@@ -26,10 +31,20 @@ run() {
 	fi
 }
 
-if ! cargo hack --version >/dev/null 2>&1; then
-	echo "  prepublish: cargo-hack is missing. cargo install cargo-hack" >&2
+# Every program the checks call, named before the first check runs. A
+# missing one is then one line, not a failure halfway through.
+for tool in cargo-hack cargo-audit rustup python3 curl; do
+	case "$tool" in
+	cargo-*) cargo "${tool#cargo-}" --version >/dev/null 2>&1 && continue ;;
+	*) command -v "$tool" >/dev/null 2>&1 && continue ;;
+	esac
+	case "$tool" in
+	cargo-*) echo "  prepublish: $tool is missing. cargo install $tool" >&2 ;;
+	rustup) echo "  prepublish: rustup is missing. https://rustup.rs" >&2 ;;
+	*) echo "  prepublish: $tool is missing. Install it with the system package manager." >&2 ;;
+	esac
 	exit 1
-fi
+done
 
 # --no-dev-deps and --all-targets are mutually exclusive in cargo-hack,
 # so the two checks below run separately.

@@ -75,6 +75,11 @@ for (const t of TARGETS) {
     name: `@${SCOPE}/${name}`,
     version,
     license: wrapper.license,
+    // npm publishes with provenance only when the manifest names the
+    // public repository the workflow runs in, and the registry checks
+    // the match. A platform package without this field fails at the
+    // last registry, after crates.io and PyPI hold the version.
+    repository: wrapper.repository,
     os: [t.os],
     cpu: [t.cpu],
     // No `libc` field. npm enforces it, and a static musl binary runs

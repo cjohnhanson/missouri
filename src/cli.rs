@@ -228,7 +228,7 @@ pub struct ServeArgs {
     #[arg(long)]
     pub run: Option<String>,
 
-    /// Port to serve on
+    /// Accepted and unused until serve exists
     #[arg(long, default_value = "8080")]
     pub port: u16,
 }
@@ -453,7 +453,10 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
         Command::Init(init_args) => {
             let dir = resolve_dir(&init_args.dir)?;
             crate::scaffold::init_project(&dir, config_dir).into_diagnostic()?;
-            println!("initialized missouri project at {}", dir.join(config_dir));
+            // Collecting the components drops a `.` from the default
+            // directory, which printed as `/path/./.missouri`.
+            let shown: Utf8PathBuf = dir.join(config_dir).components().collect();
+            println!("initialized missouri project at {shown}");
             Ok(true)
         }
         Command::State(state_args) => match state_args.command {
@@ -498,11 +501,13 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             let dir = resolve_dir(&serve_args.dir)?;
             let _run_dir =
                 crate::recorder::find_run_dir(&dir, config_dir, serve_args.run.as_deref())?;
-            // Serve is a placeholder. It only checks that a run exists.
-            println!(
+            // Serve is a placeholder. It only checks that a run exists,
+            // and it exits 1 so a caller cannot read the placeholder as
+            // a server that started.
+            eprintln!(
                 "serve is not implemented yet. Write the report with `missouri report --format html`."
             );
-            Ok(true)
+            Ok(false)
         }
 
         Command::Docs(args) => {

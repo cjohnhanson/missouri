@@ -18,7 +18,7 @@ set -e
 # dropped, so the loops below read both directions.
 command -v gaff >/dev/null || {
 	echo "merge-gate: gaff is not on PATH, so the review check cannot run." >&2
-	echo "  cargo install --git https://github.com/cjohnhanson/gaff" >&2
+	echo "  cargo install --locked --git https://github.com/cjohnhanson/gaff" >&2
 	exit 1
 }
 required=$(gaff reviews)
@@ -69,6 +69,7 @@ fi
 if [ -d tests/missouri ]; then
 	command -v missouri >/dev/null || {
 		echo "merge-gate: missouri is not on PATH and tests/missouri exists." >&2
+		echo "  cargo install --locked --path ." >&2
 		exit 1
 	}
 	echo "merge-gate: missouri run"

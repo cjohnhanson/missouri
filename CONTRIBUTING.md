@@ -83,7 +83,7 @@ the workflows from it, and `gaff init --git` writes the hooks. To run
 the gates against `HEAD` without a commit:
 
 ```sh
-cargo install --git https://github.com/cjohnhanson/gaff
+cargo install --locked --git https://github.com/cjohnhanson/gaff
 gaff ci
 ```
 
@@ -100,11 +100,12 @@ not show it.
 
 ## Releases
 
-Before a tag, run `sh scripts/prepublish.sh`. It needs `cargo-hack`,
-`cargo-audit`, `python3`, and `curl`. It checks every feature
-combination, runs the tests, clippy, and fmt under the pinned
-toolchain, audits the lock, runs a publish dry run from a clean
-checkout, and confirms the version is not on crates.io. The first
+Before a tag, run `sh scripts/prepublish.sh` from the repository root.
+It needs `cargo-hack`, `cargo-audit`, `python3`, `curl`, and `rustup`
+with the toolchain `rust-toolchain.toml` pins. It checks every feature
+combination. It runs the tests, clippy, and fmt under the pinned
+toolchain, and audits the lock. It runs a publish dry run from a clean
+checkout and confirms the version is not on crates.io. The first
 publish of a name to crates.io is a manual `cargo publish` with a
 token, because trusted publishing cannot create a crate. After that,
 bump the version in `Cargo.toml`, commit, tag `v<version>`, and push

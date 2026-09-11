@@ -35,7 +35,7 @@ $ missouri run
 ✓ [1/1]
 PASS clean → built 14ms
 
-1 passed, 0 failed, 1 steps in 14ms
+1 passed, 0 failed, 1 step in 14ms
 ```
 
 A state can have several outgoing transitions, which is branching, and

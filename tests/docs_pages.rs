@@ -70,6 +70,51 @@ fn every_page_prints_in_full() {
 }
 
 #[test]
+fn search_lists_the_pages_that_carry_the_word_and_no_other() {
+    // A hit listing and the full listing print the same shape, so a
+    // search that filtered nothing read as a success. A word one page
+    // carries and no other tells the two apart.
+    let slugs = pages();
+    let texts: Vec<(String, String)> = slugs
+        .iter()
+        .map(|s| {
+            let text = std::fs::read_to_string(format!("docs/{s}.md")).expect("page source");
+            (s.clone(), text)
+        })
+        .collect();
+    let (only, word) = texts
+        .iter()
+        .find_map(|(slug, text)| {
+            text.split(|c: char| !c.is_ascii_alphabetic())
+                .filter(|w| w.len() >= 8 && w.chars().all(|c| c.is_ascii_lowercase()))
+                .find(|w| {
+                    texts
+                        .iter()
+                        .all(|(s, t)| s == slug || !t.to_lowercase().contains(*w))
+                })
+                .map(|w| (slug.clone(), w.to_string()))
+        })
+        .expect("a word that one page carries and the others do not");
+    let (text, code) = docs(&["search", &word]);
+    assert_eq!(code, 0, "search for {word}: {text}");
+    assert!(
+        text.contains(&only),
+        "search for {word} omits {only}:\n{text}"
+    );
+    for slug in &slugs {
+        if slug != &only {
+            assert!(
+                !text.contains(slug.as_str()),
+                "search for {word} lists {slug}, which does not carry it:\n{text}"
+            );
+        }
+    }
+    let (text, code) = docs(&["search", "zzzznomatch"]);
+    assert_ne!(code, 0, "a search with no hit exited 0: {text}");
+    assert!(text.contains("no docs matching"), "{text}");
+}
+
+#[test]
 fn an_unknown_page_is_refused_with_the_listing() {
     let (text, code) = docs(&["no-such-page"]);
     assert_ne!(code, 0, "an unknown page should not exit 0: {text}");
