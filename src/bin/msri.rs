@@ -2,13 +2,12 @@
 //!
 //! maturin ties an installed command name to the Cargo bin name, and
 //! refuses a `[project.scripts]` entry beside a binary. A wheel
-//! published as `msri` therefore needs a `msri` command, or
-//! `uvx msri` errors and tells the reader to type
-//! `uvx --from msri missouri` forever.
+//! published as `msri` therefore needs a `msri` command. Without one,
+//! `uvx msri` fails and tells the reader to type
+//! `uvx --from msri missouri` instead.
 //!
-//! This execs `missouri` beside it rather than carrying a second copy.
-//! Both names then work from one install, which is what the naming
-//! scheme asks for.
+//! This execs the `missouri` binary beside it rather than carrying a
+//! second copy, so one install gives both names.
 use std::os::unix::process::CommandExt;
 
 fn main() -> std::process::ExitCode {

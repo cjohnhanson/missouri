@@ -7,11 +7,11 @@ use std::path::Path;
 /// Write one section-1 man page for the command and one for each
 /// visible subcommand, recursively.
 ///
-/// Two names matter, and they differ. The page name joins the command
-/// path with hyphens, so `man missouri-run` works and the file is
-/// `missouri-run.1`. The synopsis must show what a person actually
-/// types, which is `missouri run`. This is the convention git follows:
-/// the page is `git-commit(1)`, and its synopsis reads `git commit`.
+/// The page name and the invocation differ. The page name joins the
+/// command path with hyphens, so `man missouri-run` works and the file
+/// is `missouri-run.1`. The synopsis shows what a person types, which is
+/// `missouri run`. Git follows the same convention: the page is
+/// `git-commit(1)`, and its synopsis reads `git commit`.
 pub fn write_man_pages(cmd: &clap::Command, dir: &Path) -> std::io::Result<()> {
     let name = cmd.get_name().to_string();
     write_pages_rec(cmd, &name, &name, dir)

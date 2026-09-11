@@ -27,10 +27,9 @@ const DOCKER_PROBE: std::time::Duration = std::time::Duration::from_secs(5);
 /// The socket file existing is not enough either. Docker Desktop
 /// leaves `/var/run/docker.sock` in place when it is stopped, and
 /// `docker image inspect` then blocks on a daemon that never answers.
-/// This probe once hung the whole suite past ten minutes on a machine
-/// with Docker installed and not running, which reads as a hang rather
-/// than as the skip it was written to be. So the probe has a deadline,
-/// and a probe that does not answer counts as unavailable.
+/// So the probe has a deadline, and a probe that does not answer counts
+/// as unavailable. Without the deadline, a machine with Docker installed
+/// and not running hangs the whole suite instead of skipping.
 fn docker_available() -> bool {
     let socket = std::path::Path::new("/var/run/docker.sock").exists()
         || std::env::var("DOCKER_HOST").is_ok();

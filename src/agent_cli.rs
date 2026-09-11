@@ -1,12 +1,8 @@
 //! The agent surface that `missouri agent eval` needs.
 //!
-//! This was `clc-sdk`, a crate in the clc workspace. clc is mothballed,
-//! and missouri is the only tool that still needs this, so the surface
-//! lives here. missouri depends on no other workspace crate.
-//!
-//! Only what the eval path uses is here. A spec from an eval file's
-//! frontmatter, the defaults it overlays, the resolved config, and the
-//! command that starts an agent.
+//! An eval file's frontmatter parses into a spec. The spec overlays a set
+//! of defaults to give a resolved config, and that config builds the
+//! command that starts an agent. Nothing else about agents lives here.
 
 use std::path::Path;
 use std::process::Command;
@@ -19,8 +15,8 @@ pub struct AgentSpec {
     /// The model, such as `haiku`, `sonnet`, or `opus`.
     #[serde(default)]
     pub model: Option<String>,
-    /// The turn ceiling. No Claude Code flag sets this yet. The field
-    /// stays for a future agent that supports one.
+    /// The turn ceiling. Nothing passes this to the agent yet, because
+    /// Claude Code has no flag for it.
     #[serde(default)]
     pub max_turns: Option<u32>,
     /// The cost ceiling, in cents.

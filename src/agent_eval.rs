@@ -5,9 +5,9 @@
 //! body becomes the agent's prompt. The agent returns a verdict by calling
 //! `missouri agent pass` or `missouri agent fail <details>`.
 //!
-//! Verdict protocol: the agent writes a sentinel file. The contents of
-//! that file decide pass or fail. This needs no sidecar process and no
-//! socket.
+//! The agent reports its verdict by writing a sentinel file into the
+//! working directory, and the first line of that file decides pass or
+//! fail.
 
 use std::path::Path;
 
@@ -59,8 +59,8 @@ pub fn write_fail(work_dir: &Path, details: &str) -> std::io::Result<()> {
     std::fs::write(path, format!("fail\n{details}\n"))
 }
 
-/// Read and parse a verdict sentinel file. Returns `None` when the agent
-/// wrote no verdict, that is, when it called neither pass nor fail.
+/// Read and parse a verdict sentinel file. Returns `None` when the file
+/// is missing, and also when its first line is neither `pass` nor `fail`.
 pub fn read_verdict(work_dir: &Path) -> Option<EvalVerdict> {
     let path = work_dir.join(VERDICT_FILE);
     let content = std::fs::read_to_string(path).ok()?;

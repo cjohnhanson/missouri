@@ -328,7 +328,7 @@ fn format_content_diff(actual: &Utf8Path, expected: &Utf8Path) -> String {
     format!("expected:\n{e}\nactual:\n{a}")
 }
 
-fn run_comparator(
+pub(crate) fn run_comparator(
     command: &str,
     arg1: &Utf8Path,
     arg2: &Utf8Path,
@@ -336,6 +336,13 @@ fn run_comparator(
     state_env: &BTreeMap<String, String>,
     sandbox: &dyn crate::executor::Backend,
 ) -> Result<(), String> {
+    // The Docker backend runs a command through the Docker API and has no
+    // host Command to build, so a comparator has nowhere to run.
+    if sandbox.is_docker() {
+        return Err(format!(
+            "comparator '{command}' cannot run with docker: true; a comparator runs on the host"
+        ));
+    }
     // Build PATH: bin dirs → state_env PATH → system PATH → fallback
     let system_path =
         std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
@@ -354,8 +361,8 @@ fn run_comparator(
     );
 
     // A comparator always runs as a shell command, because inner_cmd is a
-    // shell expression. Pass a placeholder work_dir. A comparator needs no
-    // working directory.
+    // shell expression. It needs no working directory, so pass a
+    // placeholder.
     let work_dir = camino::Utf8Path::new("/");
     let output = crate::signal::run_tracked(
         &mut sandbox.build_shell_command(&inner_cmd, work_dir, state_env, &path_env),
@@ -669,7 +676,7 @@ mod tests {
 
         fs::write(a.join("file.txt"), "hello").unwrap();
         fs::write(b.join("file.txt"), "hello").unwrap();
-        // Same name, different content — would normally be ContentMismatch
+        // Same name, different content, which normally reports a ContentMismatch
         fs::write(a.join("cache.bin"), "version1").unwrap();
         fs::write(b.join("cache.bin"), "version2").unwrap();
 

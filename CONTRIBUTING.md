@@ -2,12 +2,10 @@
 
 ## Use of AI
 
-Say so in the pull request when a coding assistant wrote part of the
-change. Disclosure is expected, not disqualifying.
-
-You must be able to explain the change in your own words. Write your own
-comments on the pull request. A pull request the author cannot explain
-gets closed.
+Say in the pull request when a coding assistant wrote part of the
+change. Be able to explain the change in your own words, and write your
+own comments on the pull request. A pull request the author cannot
+explain is closed.
 
 ## Setup
 
@@ -18,125 +16,93 @@ cargo build
 cargo test --workspace --all-features
 ```
 
-Pass `--all-features`. The `mcp` feature is off by default, and a test
-run without it never compiles that code.
+## Before a large change
 
-## Open an issue first
+Open a GitHub issue first. A small fix needs none.
 
-Open a GitHub issue before a large change. A small fix needs no issue.
+The maintainer tracks work in markdown files under `.tisket/`. Read
+them with `cat`, or with [tisket](https://github.com/cjohnhanson/tisket)
+(`tisket issue list`, `tisket issue show <id>`). Do not edit them in a
+pull request.
 
-The maintainer tracks work in markdown files under `.tisket/`. Those are
-read-only to a contributor. Read them with `cat`, or with
-[tisket](https://github.com/cjohnhanson/tisket):
+## What CI checks
 
-```sh
-tisket issue list
-tisket issue show <id>
-```
-
-## The gates
-
-Two gates decide whether a change lands. CI runs both as the check
-named `gate`. `main` is protected and requires that check.
-
-A pull request needs a review note on its head commit, the same as a
-push. CI checks out a merge commit GitHub creates, which no reviewer
-saw, so the gate reads the note from the branch head instead.
-
-The commit gate runs two checks, and refuses a commit when unstaged
-Rust changes differ from the index:
+`main` is protected. One required check, `gate`, decides a merge. It
+runs on every pull request, and it runs the same commands the local git
+hooks run:
 
 ```sh
 cargo fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-```
-
-The merge gate runs the tests, then requires a review note:
-
-```sh
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-features
+cd tests/missouri && missouri run
 ```
 
-A push carries a review note on its tip, holding one sign-off line per
-review. `.gaff/gaff.yml` declares which reviews a change must pass.
-Read the list with:
+After those, the check reads a review note from the head commit of the
+branch. It reads the branch head, not the merge commit GitHub builds for
+CI, because no reviewer saw that merge commit.
+
+The review note is the maintainer's part. `.gaff/gaff.yml` names the
+reviews a change must pass (`gaff reviews` prints them): `review-tests`,
+`review-docs`, `review-code`, `review-deps`, and `review-usability`. For
+each one, an agent that did not write the change reads it against the
+criteria in `.agents/skills/<name>/SKILL.md` and returns one line, which
+names the commit it read:
+
+```
+signoff[review-tests] PASS 4f1c2ab removed a guard, a_failed_signoff went red
+```
+
+Every line goes in one git note on that commit:
 
 ```sh
-gaff reviews
+git notes --ref=reviews add -m '<the lines>' <sha>
 ```
 
-Today that is `fresh-eyes` and `mutation`. A reviewer who did not write
-the change reads it, then removes a guard the change adds and watches a
-named test go red. Each sign-off is one line, anchored at the start of
-a line, naming the commit it reviewed:
+`.agents/skills/signoff-driver/SKILL.md` has the procedure. As a
+contributor from outside, open the pull request and stop there. The
+maintainer runs the reviews on its head commit and writes the note.
 
-```sh
-git notes --ref=reviews add -m \
-'signoff[fresh-eyes] PASS 4f1c2ab read the parser and every guard
-signoff[mutation] PASS 4f1c2ab removed the FAIL branch, a_failed_signoff went red' <sha>
-```
-
-Prose around the lines is ignored, so a note can carry a narrative too.
-
-Six things refuse a push: no sign-off for a declared review, a verdict
-of `FAIL`, a sign-off naming a different commit, two sign-offs for one
-review, evidence under three words, and no note at all.
-
-The commit binding is the load-bearing part. Without it a sign-off
-copies forward onto a later commit nobody read, and nothing says so.
-
-Prose alone is not a sign-off, and that rule has a reason. A note
-reading `mutation: skipped this round` names the review, so the first
-version of this check passed it. So did `fresh-eyes: FAILED, do not
-merge`.
+The check refuses a note that is missing a line for a declared review,
+carries a `FAIL`, names another commit, names a sha shorter than seven
+characters, holds two lines for one review, or gives fewer than three
+words of evidence. Prose around the lines is ignored, so a note can also
+carry a narrative.
 
 ## Running the gates locally
 
-The gates are declared once, in `.gaff/gaff.yml`. CI reads that file, so
-CI and a local run cannot drift.
-
-**Do not install the hooks for a one-off contribution.** They refuse a
-push without a review note, so an outside contributor cannot push at
-all. Open a pull request and let CI run the gates.
-
-For sustained work, install them with
-[gaff](https://github.com/cjohnhanson/gaff). The hooks call it, so it
-must be on your `PATH`:
+`.gaff/gaff.yml` declares the gates once, and CI reads that file, so a
+local run and CI cannot differ. To run them against `HEAD` without a
+commit:
 
 ```sh
 cargo install --git https://github.com/cjohnhanson/gaff
-gaff init --git
-```
-
-To run the gates without committing:
-
-```sh
 gaff ci
 ```
 
+`gaff init --git` installs the same gates as git hooks. The pre-push
+hook refuses a push that carries no review note, so for a one-off
+contribution leave the hooks uninstalled and let CI run the gates on the
+pull request.
+
 ## Pull requests
 
-1. Branch from `main`, and open the pull request from a fork.
-2. Keep the change and its tests together.
-3. Add an entry to `CHANGELOG.md` for a user-visible change.
-4. Write the commit message in the imperative present. State what the
-   change does. State why where the diff does not show it.
+Branch from `main` and open the pull request from a fork. Keep a change
+and its tests in one pull request. Write the commit message in the
+imperative present: what the change does, and why, where the diff does
+not show it.
 
 ## What not to commit
 
-Nothing here is checked automatically. `.gitignore` stops build output
-and local editor state. The other two are on you:
-
-- Anything under `target/`.
-- An absolute path naming a home directory. It exposes an account name,
-  and it breaks every other clone.
-- A `path = "..."` dependency override pointing outside the repository.
-  Put it in `.cargo/config.toml`, which is ignored.
-- Local editor or coding-agent state.
+`.gitignore` covers `target/`, editor and agent state, and
+`.cargo/config.toml`. Two things it cannot catch. An absolute path that
+names a home directory exposes an account name and breaks every other
+clone. A `path = "..."` dependency override that points outside the
+repository does the same; put it in `.cargo/config.toml`.
 
 ## Questions
 
-Open an issue on GitHub for a question about the library.
+Open a GitHub issue.
 
 ## Security
 
@@ -145,5 +111,4 @@ Do not open a public issue for a vulnerability. See
 
 ## License
 
-Your contributions are licensed under the MIT license, the same as the
-project.
+Contributions are licensed under MIT, the same as the project.
