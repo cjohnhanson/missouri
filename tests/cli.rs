@@ -868,6 +868,26 @@ fn serve_no_runs_errors() {
         .stderr(predicate::str::contains("no recorded runs"));
 }
 
+#[test]
+fn serve_with_a_recording_refuses_and_exits_nonzero() {
+    // serve is a placeholder, and the exit code is its whole contract:
+    // a caller that reads 0 takes the placeholder for a server that
+    // started. Returning Ok(true) here once left the suite green, so
+    // this test exists to fail when it does.
+    let tmp = copy_fixture_to_tmp("03-branching");
+    let dir = tmp.path().to_str().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".missouri/runs/20260101-000000"))
+        .expect("a recorded run directory");
+
+    missouri()
+        .arg("serve")
+        .arg("-d")
+        .arg(dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not implemented yet"));
+}
+
 // --- 18: Root-level missouri.yml with test_dir ---
 
 #[test]

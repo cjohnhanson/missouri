@@ -107,7 +107,18 @@ combination. It runs the tests, clippy, and fmt under the pinned
 toolchain, and audits the lock. It runs a publish dry run from a clean
 checkout and confirms the version is not on crates.io. The first
 publish of a name to crates.io is a manual `cargo publish` with a
-token, because trusted publishing cannot create a crate. After that,
+token, because trusted publishing cannot create a crate.
+
+PyPI needs its own step before the first tag, and only a person can do
+it. Trusted publishing does create a new project, but only through a
+pending publisher, and a pending publisher exists only once someone
+registers it. Register one at
+<https://pypi.org/manage/account/publishing/> with project `msri`,
+owner `cjohnhanson`, repository `missouri`, workflow `release.yml`, and
+no environment. Without it the tag publishes the crate and then fails
+at `uv publish`, and crates.io never releases the version it took.
+
+After both,
 bump the version in `Cargo.toml`, commit, tag `v<version>`, and push
 the tag. `.github/workflows/release.yml` builds and publishes from
 there. A `workflow_dispatch` run of that workflow rehearses every
