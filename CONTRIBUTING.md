@@ -46,7 +46,7 @@ The review note is the maintainer's part. `.gaff/gaff.yml` names the
 reviews a change must pass (`gaff reviews` prints them): `review-tests`,
 `review-docs`, `review-code`, `review-deps`, and `review-usability`. For
 each one, an agent that did not write the change reads it against the
-criteria in `.agents/skills/<name>/SKILL.md` and returns one line, which
+criteria in `.agents/skills/<name>/SKILL.md`. It returns one line, which
 names the commit it read:
 
 ```
@@ -63,11 +63,15 @@ git notes --ref=reviews add -m '<the lines>' <sha>
 contributor from outside, open the pull request and stop there. The
 maintainer runs the reviews on its head commit and writes the note.
 
-The check refuses a note that is missing a line for a declared review,
-carries a `FAIL`, names another commit, names a sha shorter than seven
-characters, holds two lines for one review, or gives fewer than three
-words of evidence. Prose around the lines is ignored, so a note can also
-carry a narrative.
+The check refuses a note with any of these faults:
+
+- no line for a declared review
+- a `FAIL` verdict
+- a line that names another commit, or a sha under seven characters
+- two lines for one review
+- fewer than three words of evidence
+
+Prose around the lines is ignored, so a note can also carry a narrative.
 
 ## Running the gates locally
 
@@ -81,9 +85,9 @@ gaff ci
 ```
 
 `gaff init --git` installs the same gates as git hooks. The pre-push
-hook refuses a push that carries no review note, so for a one-off
-contribution leave the hooks uninstalled and let CI run the gates on the
-pull request.
+hook refuses a push that carries no review note. For a one-off
+contribution, leave the hooks uninstalled and let CI run the gates on
+the pull request.
 
 ## Pull requests
 
@@ -91,6 +95,17 @@ Branch from `main` and open the pull request from a fork. Keep a change
 and its tests in one pull request. Write the commit message in the
 imperative present: what the change does, and why, where the diff does
 not show it.
+
+## Releases
+
+Before a tag, run `sh scripts/prepublish.sh`. It needs `cargo-hack` and
+`cargo-audit`. It checks every feature combination, runs the tests,
+clippy, and fmt under the pinned toolchain, audits the lock, runs a
+publish dry run from a clean checkout, and confirms the version is not
+on crates.io. Then bump the version in `Cargo.toml`, commit, tag
+`v<version>`, and push the tag. `.github/workflows/release.yml` builds
+and publishes from there. A `workflow_dispatch` run of that workflow
+rehearses every build and publishes nothing.
 
 ## What not to commit
 
