@@ -64,6 +64,37 @@ fn the_wrapper_names_the_repository_cargo_names() {
     );
 }
 
+#[test]
+fn the_readme_installs_the_name_the_wrapper_publishes() {
+    // npm refused `msri` as too close to names it already holds, so the
+    // wrapper carries the scope. The README kept the bare name, and a
+    // reader who typed it got a package that does not exist.
+    let wrapper =
+        std::fs::read_to_string(format!("npm/{SHORT}/package.json")).expect("wrapper manifest");
+    let name = wrapper
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("\"name\": \""))
+        .and_then(|r| r.split('"').next())
+        .expect("a name in the wrapper manifest");
+    let readme = std::fs::read_to_string("README.md").expect("README.md");
+    for command in [format!("npm install -g {name}"), format!("npx {name}")] {
+        assert!(
+            readme.contains(&command),
+            "README.md never says `{command}`, and the wrapper publishes as {name}"
+        );
+    }
+    // A scoped wrapper makes the bare name wrong everywhere it appears
+    // after `npx` or `npm install -g`.
+    if name != SHORT {
+        for stale in [format!("npm install -g {SHORT}"), format!("npx {SHORT} ")] {
+            assert!(
+                !readme.contains(&stale),
+                "README.md still says `{stale}`, and npm holds no such package"
+            );
+        }
+    }
+}
+
 fn generate(root: &Path, extra: &[&str]) -> std::process::Output {
     Command::new("node")
         .arg("npm/generate.mjs")
@@ -156,9 +187,11 @@ fn a_partial_build_writes_one_package_npm_will_install() {
     }
     let wrapper = std::fs::read_to_string(root.join("npm").join(SHORT).join("package.json"))
         .expect("wrapper manifest");
+    // The wrapper's own name carries the scope too, so a dependency is
+    // a scoped line that is not the name.
     let deps: Vec<&str> = wrapper
         .lines()
-        .filter(|l| l.contains("@cjohnhanson/"))
+        .filter(|l| l.contains("@cjohnhanson/") && !l.trim_start().starts_with("\"name\":"))
         .collect();
     assert_eq!(
         deps.len(),

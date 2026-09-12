@@ -1,6 +1,6 @@
 //! The npm wrapper's platform table.
 //!
-//! The wrapper is the entry point for `npx msri`, and no Rust test
+//! The wrapper is the entry point for `npx @cjohnhanson/msri`, and no Rust test
 //! reaches it. A reviewer found its Linux arm broken and every suite
 //! green: the table held only a musl key, and a glibc host fell
 //! through to the refusal. These tests drive the real file with node.
