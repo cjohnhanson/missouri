@@ -1,0 +1,10 @@
+Review record for the Install section rewrite.
+
+The change edits one section of README.md. No code, no dependency, and
+no command changes. Each line states what was checked.
+
+signoff[review-tests] PASS ec86d27 the workspace suite is green here, and `the_readme_installs_the_name_the_wrapper_publishes` is the test that reads this section: it takes the name out of the npm wrapper manifest and requires the README to install that name and to hold no bare one, so the table's npm row and the run-once example are both pinned; no test reads the rest of the section, so every other claim was checked against the artifact it describes
+signoff[review-code] PASS ec86d27 no source file changes, confirmed by the commit touching README.md alone
+signoff[review-docs] PASS ec86d27 every package named in the table resolves on its registry; the `.deb` filename and the download URL match the assets on the latest release, including the package revision; the archive contents sentence was written after extracting an archive, which is why the count of man pages differs between these repositories; the release carries no Windows asset, so the sentence saying there is no Windows build is true; the Rust version matches `rust-version` in the manifest, and the C compiler claim is `aws-lc-sys`, which the lockfile holds
+signoff[review-deps] PASS ec86d27 no manifest and no lockfile changes
+signoff[review-usability] PASS ec86d27 the section now opens with the archives and a table that names the package each manager uses, which is the one fact a reader needs and the fact the deleted prose spent two sentences explaining; the commands were run rather than assumed, and each prints the expected version
