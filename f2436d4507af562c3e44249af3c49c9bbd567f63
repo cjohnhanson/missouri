@@ -1,0 +1,16 @@
+Carried from e794630, which the pull request squashed to f2436d4. Both
+commits name the same tree, so these sign-offs read what main holds.
+
+Review record for the npm publish fix, its test, and the version it
+needs.
+
+The change adds `./` to the paths the npm job publishes, adds a test
+that refuses a bare path, and bumps the version so a tag can carry the
+fix. No product code changes. The driver verified all three directly.
+Each line states what was checked.
+
+signoff[review-tests] PASS f2436d4 `every_npm_publish_path_is_relative` is new and reads every `npm publish` line in the workflow; it was killed by mutation, because restoring the bare path made it fail at the assertion and nothing else in the file moved; the existing glob test already caught the change and its expectation moved with it; `cargo test --test release_workflow` is green here, and the pre-push gate runs the whole suite and the missouri paths before the branch leaves the machine
+signoff[review-code] PASS f2436d4 the failure is exact: the npm job reported `git ls-remote ssh://git@github.com/npm/<pkg>.git` and `Permission denied (publickey)`, which is npm resolving a folder argument as a GitHub shorthand; the same workflow already writes `./npm/<pkg>` in its packages assembly step, and that step passed on every run while the publish step failed, which isolates the prefix as the difference; the loop variable keeps its quoting, and the new test admits `"$d"` because the glob test pins what it holds
+signoff[review-docs] PASS f2436d4 the workflow step and the test both carry a comment naming the cause and the exact clone npm attempted; no document states the publish command, and no document names a version, because every other file derives it from the manifest
+signoff[review-deps] PASS f2436d4 no dependency is added, removed or moved; the lockfile diff holds one line, which is this package's own version entry
+signoff[review-usability] PASS f2436d4 no binary, help text or error message changes; the reader affected installs from npm, and what they met was a package that does not exist, because the wrapper and its platform packages never reached the registry
