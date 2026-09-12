@@ -6,14 +6,14 @@ type: tutorial
 
 # Getting Started with Missouri
 
-Missouri tests a CLI tool by modeling its behavior as a graph of filesystem states. A transition says this: run this command on these files, and the result must match those files. In this tutorial you build a two-state graph, watch it pass, watch it fail, and add an assertion. That is enough to show whether the model fits your work. Read [What is Missouri?](/missouri/what-is-missouri) for the concepts behind the model.
+Missouri tests a CLI tool by modeling its behavior as a graph of filesystem states. A transition says that this command, run on these files, must produce those files. In this tutorial you build a two-state graph, watch it pass, add an assertion, and then watch it fail. Read [What is Missouri?](what-is-missouri.md) for the concepts behind the model.
 
 ## Install missouri
 
 Build missouri from source:
 
 ```
-cargo install --path .
+cargo install --locked --git https://github.com/cjohnhanson/missouri
 ```
 
 Check that the binary is available:
@@ -96,9 +96,9 @@ transitions:
 
 The fields:
 
-- `name` -- an optional label for the test output.
-- `command` -- the shell command to run. It runs via `sh -c` by default.
-- `target` -- the relative path to the expected target state directory.
+- `name`. An optional label for the test output.
+- `command`. The shell command to run. It runs through `sh -c` by default.
+- `target`. The relative path to the expected target state directory.
 
 Missouri copies the source state's files to a temp directory. It runs the command there. It then compares the result against the target state's files. The transition passes when the two match.
 
@@ -111,9 +111,10 @@ missouri run
 The output looks like this:
 
 ```
-  PASS  clean -> built (create output)
+✓ [1/1]
+PASS clean → built 14ms
 
-1 path, 1 passed
+1 passed, 0 failed, 1 step in 14ms
 ```
 
 Missouri found two states and one transition from `clean` to `built`. It ran the command. It then confirmed that the resulting filesystem matched the `built` state.
@@ -136,9 +137,15 @@ List the test paths that missouri would run:
 missouri list
 ```
 
+```
+1. clean → built
+
+1 path(s)
+```
+
 ## Add an assertion
 
-An assertion is a command that verifies a property of a state. It does not change the state. Missouri runs the assertions for a state after it has verified every transition into that state.
+An assertion is a command that verifies a property of a state. It does not change the state. Missouri runs a target state's assertions after each transition into it, and a source state's assertions before the first transition out of it.
 
 Edit `built/.missouri/missouri.yml`:
 
@@ -151,21 +158,23 @@ assertions:
 
 The fields:
 
-- `name` -- an optional label for the test output.
-- `command` -- the command to run in the state's directory.
-- `stdout` -- the exact stdout to expect. The assertion fails when the actual output differs.
+- `name`. An optional label for the test output.
+- `command`. The command to run in the state's directory.
+- `stdout`. The exact stdout to expect. The assertion fails when the actual output differs.
 
-Run the tests again:
-
-```
-missouri run
-```
+Run the tests again. Missouri prints a passing assertion only with `-v`:
 
 ```
-  PASS  clean -> built (create output)
-    PASS  output contains hello
+missouri run -v
+```
 
-1 path, 1 passed
+```
+✓ [1/1]
+PASS clean → built 30ms
+  ✓ clean → built (create output) 29ms
+    ✓ assert: output contains hello 16ms
+
+1 passed, 0 failed, 1 step, 1 assertion in 30ms
 ```
 
 The assertion ran after the transition. It verified the file contents.
@@ -188,13 +197,14 @@ missouri run
 ```
 
 ```
-  FAIL  clean -> built (create output)
-    FAIL  output contains hello
-      stdout mismatch:
-        expected: "goodbye\n"
-        actual:   "hello\n"
+✗ [1/1]
+FAIL clean → built 22ms
+  ✗ clean → built (create output) 22ms
+    ✗ assert: output contains hello 11ms
+      stdout expected: "goodbye\n"
+      stdout actual:   "hello\n"
 
-1 path, 0 passed, 1 failed
+0 passed, 1 failed, 1 step, 1 assertion in 22ms
 ```
 
 Missouri shows the exact mismatch. Change the value back to `"hello\n"` and the suite passes again.
@@ -204,7 +214,7 @@ A filesystem mismatch works the same way. Missouri reports the diff when the com
 ## Next steps
 
 - Add more states and chain the transitions into multi-step paths. Missouri finds every root-to-leaf path for you.
-- Add `comparators` to a transition to skip a volatile file or to run a custom diff command. Read the [CLI reference](/missouri/cli-reference) for the full `missouri.yml` schema.
+- Add `comparators` to a transition to skip a volatile file or to run a custom diff command. Read the [CLI reference](cli-reference.md) for the full `missouri.yml` schema.
 - Add `env` to a state or to the project config to set environment variables.
 - Put shared scripts in `.missouri/bin/`. Missouri adds that directory to PATH during a test run.
 - Use `--verbose` (`-v`) for detailed output. Use `--keep-temp` to read the temp directories that missouri creates.

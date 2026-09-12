@@ -1,0 +1,146 @@
+# Contributing
+
+## Use of AI
+
+Say in the pull request when a coding assistant wrote part of the
+change. Be able to explain the change in your own words, and write your
+own comments on the pull request. A pull request the author cannot
+explain is closed.
+
+## Setup
+
+```sh
+git clone https://github.com/cjohnhanson/missouri
+cd missouri
+cargo build
+cargo test --workspace --all-features
+```
+
+Some tests need other programs on `PATH`: `node` for the npm wrapper,
+and `nix` for the illinois scenarios, which skip without it.
+
+## Before a large change
+
+Open a GitHub issue first. A small fix needs none.
+
+The maintainer tracks work in markdown files under `.tisket/`. Read
+them with `cat`, or with [tisket](https://github.com/cjohnhanson/tisket)
+(`tisket issue list`, `tisket issue show <id>`). Do not edit them in a
+pull request.
+
+## What CI checks
+
+`main` is protected. One required check, `gate`, decides a merge. It
+runs on every pull request, and it runs the same commands the local git
+hooks run:
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cd tests/missouri && missouri run
+```
+
+After those, the check reads a review note from the head commit of the
+branch. It reads the branch head, not the merge commit GitHub builds for
+CI, because no reviewer saw that merge commit.
+
+The review note is the maintainer's part. `.gaff/gaff.yml` names the
+reviews a change must pass (`gaff reviews` prints them): `review-tests`,
+`review-docs`, `review-code`, `review-deps`, and `review-usability`. For
+each one, an agent that did not write the change reads it against the
+criteria in `.agents/skills/<name>/SKILL.md`. It returns one line, which
+names the commit it read:
+
+```
+signoff[review-tests] PASS 4f1c2ab removed a guard, a_failed_signoff went red
+```
+
+Every line goes in one git note on that commit:
+
+```sh
+git notes --ref=reviews add -m '<the lines>' <sha>
+```
+
+`.agents/skills/signoff-driver/SKILL.md` has the procedure. As a
+contributor from outside, open the pull request and stop there. The
+maintainer runs the reviews on its head commit and writes the note.
+
+The check refuses a note with any of these faults:
+
+- no line for a declared review
+- a `FAIL` verdict
+- a line that names another commit, or a sha under seven characters
+- two lines for one review
+- fewer than three words of evidence
+
+Prose around the lines is ignored, so a note can also carry a narrative.
+
+## Running the gates locally
+
+`.gaff/gaff.yml` declares the gates once. `gaff init --github` writes
+the workflows from it, and `gaff init --git` writes the hooks. To run
+the gates against `HEAD` without a commit:
+
+```sh
+cargo install --locked --git https://github.com/cjohnhanson/gaff
+gaff ci
+```
+
+The pre-push hook refuses a push that carries no review note. For a
+one-off contribution, leave the hooks uninstalled and let CI run the
+gates on the pull request.
+
+## Pull requests
+
+Branch from `main` and open the pull request from a fork. Keep a change
+and its tests in one pull request. Write the commit message in the
+imperative present: what the change does, and why, where the diff does
+not show it.
+
+## Releases
+
+Before a tag, run `sh scripts/prepublish.sh` from the repository root.
+It needs `cargo-hack`, `cargo-audit`, `python3`, `curl`, and `rustup`
+with the toolchain `rust-toolchain.toml` pins. It checks every feature
+combination. It runs the tests, clippy, and fmt under the pinned
+toolchain, and audits the lock. It runs a publish dry run from a clean
+checkout and confirms the version is not on crates.io. The first
+publish of a name to crates.io is a manual `cargo publish` with a
+token, because trusted publishing cannot create a crate.
+
+PyPI needs its own step before the first tag, and only a person can do
+it. Trusted publishing does create a new project, but only through a
+pending publisher, and a pending publisher exists only once someone
+registers it. Register one at
+<https://pypi.org/manage/account/publishing/> with project `msri`,
+owner `cjohnhanson`, repository `missouri`, workflow `release.yml`, and
+no environment. Without it the tag publishes the crate and then fails
+at `uv publish`, and crates.io never releases the version it took.
+
+After both,
+bump the version in `Cargo.toml`, commit, tag `v<version>`, and push
+the tag. `.github/workflows/release.yml` builds and publishes from
+there. A `workflow_dispatch` run of that workflow rehearses every
+build and publishes nothing.
+
+## What not to commit
+
+`.gitignore` covers `target/`, editor and agent state, and
+`.cargo/config.toml`. Two things it cannot catch. An absolute path that
+names a home directory exposes an account name and breaks every other
+clone. A `path = "..."` dependency override that points outside the
+repository does the same; put it in `.cargo/config.toml`.
+
+## Questions
+
+Open a GitHub issue.
+
+## Security
+
+Do not open a public issue for a vulnerability. See
+[SECURITY.md](SECURITY.md).
+
+## License
+
+Contributions are licensed under MIT, the same as the project.

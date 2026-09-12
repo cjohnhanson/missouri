@@ -1,8 +1,24 @@
-# Repo-level gaff config. Two entries. The commit gate holds formatted
-# code and a clean clippy on pre-commit. The merge gate holds tests,
-# the missouri suite, and a fresh-eyes review note on pre-push, which
-# is the merge check in a repo that merges by direct push. Installed by
-# `gaff init --git`.
+# The reviews a change must pass before it merges. `gaff reviews`
+# prints them and `gaff reviews check` holds them, so no gate
+# hard-codes a name.
+#
+# An absent key means this repo declared no policy, and the check
+# refuses the push. Write `reviews: []` to require none.
+#
+# Each name is a skill vendored into .agents/skills by almanac, and
+# each is read by one independent agent that sees the change and
+# nothing else. signoff-driver states the procedure and when to stop.
+reviews:
+  - review-tests
+  - review-docs
+  - review-code
+  - review-deps
+  - review-usability
+
+# Repo-level gaff config, installed by `gaff init --git`. The commit
+# gate holds formatted code and a clean clippy on pre-commit. The merge
+# gate holds tests, the missouri suite, and a sign-off for every
+# declared review on pre-push.
 git:
   - name: commit-gate
     on:
@@ -17,13 +33,23 @@ git:
       - sh
       - scripts/merge-gate.sh
 
-# The CI gate: the same declarations, run by gaff ci on every push.
-# Branch protection on main requires this check, so a sha needs a green
-# gate before main accepts it.
+# The CI gate runs the same declarations under `gaff ci`.
+# Branch protection on main requires this check.
+#
 github:
   - name: gate
+    # The gate runs on a pull request and nowhere else. A reviewer signs
+    # the branch tip, and a squash merge then writes a different commit
+    # that no note names, so a run on `main` fails after every merge.
+    #
+    # `gaff ci` reads the branch head from the event payload. That is
+    # the commit a reviewer read, and branch protection gates the
+    # merge from there.
+    #
+    # A push to a branch with no pull request runs no CI, and the local
+    # hook covers only whoever installed it. Open the pull request as a
+    # draft to get the gate back.
     on:
-      - push
       - pull_request
     steps:
       - name: fetch review notes

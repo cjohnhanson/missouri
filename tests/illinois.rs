@@ -637,7 +637,7 @@ transitions:
     )
     .unwrap();
 
-    // Copy the fixture into after/ too — the state directories don't change during a run,
+    // Copy the fixture into after/ too. The state directories don't change during a run,
     // so both before and after must have them to avoid spurious "extra file" diffs.
     copy_dir_all(&fixture_src, &after.join("fixture"));
 
@@ -730,7 +730,7 @@ fn illinois_record_dbt_nix_passes() {
         eprintln!("skipping illinois_record_dbt_nix_passes: nix not found on PATH");
         return;
     }
-    // 08-dbt: 2 paths — path 0 has 1 step (dbt-seeded→dbt-ran), path 1 has 2 steps (empty→uv-initialized→uv-added)
+    // 08-dbt: 2 paths. Path 0 has 1 step (dbt-seeded→dbt-ran), path 1 has 2 steps (empty→uv-initialized→uv-added)
     let comparator = compare_results_json_pass(2, &[1, 2]);
     let tmp = setup_illinois_record_nix_scenario("08-dbt", 0, &[1, 2], &comparator);
     let output = run_illinois(&tmp);

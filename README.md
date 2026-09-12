@@ -1,24 +1,24 @@
-# 🔀 missouri
+# missouri
 
-> Show-me state. Model-based testing where system behavior is represented
-> as finite state automata.
+> Show-me state. End-to-end testing as directed graphs of filesystem
+> states.
 
-Missouri tests CLI tools by modeling their behavior as directed graphs of
-filesystem states. Each state is a directory containing the exact files
-that should exist at that point. Transitions are shell commands. Verification
-is a recursive byte-for-byte diff between the directory after a command
-runs and the directory you said it should produce.
+Missouri tests a CLI tool by modeling its behavior as a directed graph of
+filesystem states. A state is a directory. It holds the exact files that
+must exist at that point in the test. A transition is a shell command.
+Missouri runs the command, then compares the resulting directory against
+the target state directory, byte for byte.
 
-There's no assertion DSL. The expected state *is* the directory.
+There is no assertion language. The expected state is the directory.
 
 ## How it works
 
-A test suite is a set of directories, each representing a state. Each
-state's `.missouri/missouri.yml` declares transitions: a command to run
-and which state directory the filesystem should match afterward. Missouri
-discovers all paths through the state graph, executes each in an isolated
-temp directory with
-a cleared environment, and diffs the result against the target.
+A test suite is a set of directories, and each directory is a state. Each
+state's `.missouri/missouri.yml` declares its transitions. A transition
+names a command to run and the state directory that the filesystem must
+match after the command. Missouri finds every path through the graph,
+runs each path in a temp directory with a cleared environment, and diffs
+the result against the target.
 
 ```
 clean/                  # starting state (empty project)
@@ -32,33 +32,70 @@ built/                  # expected state after command
 
 ```
 $ missouri run
-  PASS  clean -> built (create output)
+✓ [1/1]
+PASS clean → built 14ms
 
-1 path, 1 passed
+1 passed, 0 failed, 1 step in 14ms
 ```
 
-States can have multiple outgoing transitions (branching) and multiple
-states can transition into the same target (convergence). The directory
-tree is the test suite. Walking it shows every intermediate and final
-state the tool under test can produce.
+A state can have several outgoing transitions, which is branching, and
+several states can point at the same target, which is convergence. The
+directory tree is the test suite.
 
 ## Isolation
 
-Every command runs with `env_clear()`. No inherited environment
-variables, no `HOME`, no `LANG`. All needed variables must be declared
-explicitly in the test config. This makes tests reproducible across
-machines and CI environments.
+Every command runs with `env_clear()`. The process inherits no
+environment variable from the host. Declare every variable a test needs
+in the test config. The test then behaves the same on your machine and in
+CI.
 
-For stronger isolation: nix shell sandboxes and Docker containers are
-supported.
+For stronger isolation, missouri also runs a command inside a nix shell
+or a Docker container.
 
 ## Beyond filesystem diffs
 
-States can also declare assertions
-(shell commands that pass or fail based on exit code and stdout/stderr),
-custom comparators for files that need non-byte-for-byte comparison,
-services for background processes, and agent assertions that delegate
-subjective evaluation to an LLM.
+A state can also declare assertions. An assertion is a shell command, and
+its exit code and output decide whether it passes. A transition can
+declare a custom comparator for a file that a byte-for-byte diff reads
+wrong, and a background service for a command that needs a server
+running. An agent assertion hands a judgment call to an LLM.
+
+## Install
+
+The package is `msri` on PyPI and npm, because `missouri` was taken. The
+command is `missouri` everywhere, and both names install together.
+
+Not released yet. Until the first tag, build from source:
+
+```sh
+cargo install --locked --git https://github.com/cjohnhanson/missouri
+```
+
+Requires Rust 1.88 and a C compiler. macOS and Linux, x86-64 and arm64.
+
+From the first release onward:
+
+```sh
+cargo install --locked missouri
+brew install cjohnhanson/tap/missouri
+uv tool install msri
+npm install -g msri
+```
+
+Or run it without installing:
+
+```sh
+uvx msri run
+npx msri run
+```
+
+From that point the [releases
+page](https://github.com/cjohnhanson/missouri/releases) also carries
+prebuilt archives and a `.deb`. Each archive holds the binary and the man
+page. Install a `.deb` with `dpkg -i`: it
+is a file, not a repository, so `apt-get install` does not reach it.
+
+Check the install with `missouri --version`.
 
 ## Usage
 
@@ -69,24 +106,24 @@ missouri run               # execute all test paths
 missouri run -v            # verbose output
 missouri list              # show states, transitions, paths
 missouri validate          # check graph is well-formed
-missouri report            # generate test reports
+missouri report            # generate a report from a recorded run
 missouri docs [topic]      # bundled documentation
 ```
 
 ## Documentation
 
-- [What is Missouri?](docs/what-is-missouri.md) — the testing model, why graphs, execution details
-- [Getting Started](docs/getting-started.md) — first test suite walkthrough
-- [Writing Tests](docs/writing-tests.md) — transitions, assertions, comparators, services
-- [CLI Reference](docs/cli-reference.md) — complete command documentation
+- [What is Missouri?](docs/what-is-missouri.md). The testing model, why graphs, and how a path runs.
+- [Getting Started](docs/getting-started.md). A walkthrough of a first test suite.
+- [Writing Tests](docs/writing-tests.md). Transitions, assertions, comparators, and services.
+- [CLI Reference](docs/cli-reference.md). Every command and every config field.
 
 ## Related
 
-- [tisket](https://github.com/cjohnhanson/tisket) — issue tracker. Markdown issues with YAML frontmatter, in the repository
-- [zettel](https://github.com/cjohnhanson/zettel) — zettelkasten notes for a repository
-- [almanac](https://github.com/cjohnhanson/almanac) — agent skill index, over pluggable sources
-- [gaff](https://github.com/cjohnhanson/gaff) — context-lifecycle handler for coding agents
-- [mdstore](https://github.com/cjohnhanson/mdstore) — the frontmattered markdown library the other three store documents with
+- [tisket](https://github.com/cjohnhanson/tisket). An issue tracker. Markdown issues with YAML frontmatter, in the repository.
+- [zettel](https://github.com/cjohnhanson/zettel). Zettelkasten notes for a repository.
+- [almanac](https://github.com/cjohnhanson/almanac). An agent skill index over pluggable sources.
+- [gaff](https://github.com/cjohnhanson/gaff). A context-lifecycle handler for coding agents.
+- [mdstore](https://github.com/cjohnhanson/mdstore). The frontmattered markdown library that tisket, zettel, and almanac store documents with.
 
 ## License
 

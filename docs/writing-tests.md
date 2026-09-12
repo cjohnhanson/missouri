@@ -16,7 +16,7 @@ transition with the command `my-tool init` and the target state B.
 
 A state can also carry assertions. An assertion is a command that
 verifies a property that the filesystem snapshot does not hold, such as
-an exit code, the stdout content, or the behavior of the tool.
+an exit code or the exact stdout.
 
 ## Directory structure
 
@@ -45,7 +45,8 @@ Each state directory holds two things:
 2. The files that make up this state. These files are the fixture.
 
 Missouri finds the states by walking the tree and looking for
-`<config_dir>/missouri.yml` files. The project root's config is the
+`<config_dir>/missouri.yml` files. The config directory is `.missouri` by
+default, and `--config-dir` changes it. The project root's config is the
 project-level config, not a state.
 
 ## Project-level config
@@ -75,11 +76,11 @@ test_dir: tests/smoke
 
 # Optional: workspace mode. Run several member suites in turn.
 members:
-  - clc/tests/missouri
-  - tisket/tests/missouri
+  - my-tool/tests/missouri
+  - other-tool/tests/missouri
 ```
 
-> **Missouri clears the environment.** A command runs with `PATH` and the variables you declare in an `env` block. It gets nothing else: no `HOME`, no `TMPDIR`, and no `SHELL`. When a command fails for no clear reason, check whether it needs a variable that you did not declare.
+> Missouri clears the environment before every command. A command runs with `PATH` and the variables you declare in an `env` block, and with nothing else from the host. When a command fails for no clear reason, check whether it needs a variable that you did not declare.
 
 ### Field reference (ProjectConfig)
 
@@ -90,6 +91,8 @@ members:
 | `packages` | list | `[]` | Nix packages to provide through `nix shell` |
 | `test_dir` | string | none | The directory where state discovery starts, relative to the config |
 | `members` | list | `[]` | Workspace member directories |
+| `docker` | bool | `false` | Run every transition inside a Docker container with no network access. It overrides `packages`. An assertion, a comparator, and a service run on the host, so each is refused under `docker: true` |
+| `docker_image` | string | `debian:bookworm-slim` | The image the containers run. Requires `docker: true` |
 
 ### Setup commands
 
@@ -99,7 +102,7 @@ common use is to build the binary under test.
 
 ```yaml
 setup:
-  - name: "build tisket"
+  - name: "build my-tool"
     command: "cargo build --quiet --manifest-path ../../Cargo.toml"
   - command: "db-seed"
     shell: false
@@ -120,10 +123,10 @@ filesystem comparison, for every transition.
 .git/
 ```
 
-The clc test suite ignores `.git/` because the git internals are not
-deterministic. The comparison engine uses the `ignore` crate, so the full
-gitignore syntax works: `*`, `**`, `!` for negation, `#` for a comment,
-and a trailing `/` for a directory.
+A suite that runs git commands ignores `.git/`, because git internals are
+not deterministic. The comparison engine uses the `ignore` crate, so the
+full gitignore syntax works. That covers `*`, `**`, `!` for negation, `#`
+for a comment, and a trailing `/` for a directory.
 
 ### The bin directory
 
@@ -150,10 +153,10 @@ Files in `.missouri/` are never part of the fixture. They are config.
 
 ### Dotfile fixtures via dot- directories
 
-Git cannot track a directory such as `.git/` or `.clc/` inside a test
-fixture. Missouri works around this with the `dot-` convention. At
-runtime, it restores a directory named `.missouri/dot-<name>/` as
-`.<name>/` in the temp directory.
+Git cannot track a `.git/` directory inside a test fixture. Missouri
+works around this with the `dot-` convention. At runtime, it restores a
+directory named `.missouri/dot-<name>/` as `.<name>/` in the temp
+directory.
 
 ```
 initialized/.missouri/
@@ -161,7 +164,7 @@ initialized/.missouri/
 ├── dot-git/         # becomes .git/ at runtime
 │   ├── HEAD
 │   └── config
-└── dot-clc/         # becomes .clc/ at runtime
+└── dot-my-tool/     # becomes .my-tool/ at runtime
     └── .gitkeep     # .gitkeep files are skipped during restoration
 ```
 
@@ -179,11 +182,16 @@ entrypoint: true
 
 assertions:
   - name: "everything looks right"
-    command: "test -d .clc"
+    command: "test -d .my-tool"
 ```
 
 Use an entrypoint when a state costs a lot to reach through transitions
 and you want to test from a pre-built snapshot.
+
+An entrypoint is also a boundary. A path that arrives at one stops there,
+so missouri tests the states beyond it from the entrypoint itself and not
+from the root. Setting `entrypoint: true` on a state in the middle of a
+graph therefore removes the root-to-leaf paths that ran through it.
 
 ### Environment variables
 
@@ -225,6 +233,7 @@ transitions:
 | `stdout` | string | none | The exact stdout to expect |
 | `stderr` | string | none | The exact stderr to expect |
 | `services` | list | `[]` | Background services to run during this transition |
+| `doc` | string | none | Prose that describes this transition. `missouri docgen` renders it |
 
 ### Target resolution
 
@@ -274,13 +283,13 @@ model different outcomes:
 ```yaml
 transitions:
   - name: "close issue"
-    command: "tisket issue close fix-the-widget"
+    command: "my-tool issue close fix-the-widget"
     target: "../issue-closed"
   - name: "edit issue"
-    command: "tisket issue edit fix-the-widget --status todo"
+    command: "my-tool issue edit fix-the-widget --status todo"
     target: "../issue-edited"
   - name: "create second issue"
-    command: "tisket issue create 'Write tests' -p bugs"
+    command: "my-tool issue create 'Write tests' -p bugs"
     target: "../has-two-issues"
 ```
 
@@ -295,8 +304,8 @@ multi-statement commands work:
 command: "git init -q -b main && my-tool init"
 ```
 
-Set `shell: false` to run the command directly. The shell then reads
-nothing:
+Set `shell: false` to run the command directly, with no shell between
+missouri and the program:
 
 ```yaml
 command: "/usr/bin/my-tool"
@@ -328,13 +337,13 @@ state's fixture in a temp directory.
 ```yaml
 assertions:
   - name: "config file exists"
-    command: "test -f .clc/config.yml"
+    command: "test -f .my-tool/config.yml"
 
   - name: "config show reflects custom value"
-    command: "clc config show 2>&1 | grep 'main_branch: trunk'"
+    command: "my-tool config show 2>&1 | grep 'main_branch: trunk'"
 
   - name: "issue list is empty"
-    command: "tisket issue list"
+    command: "my-tool issue list"
     stdout: ""
 ```
 
@@ -343,7 +352,8 @@ assertions:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | auto-generated | A label for the output |
-| `command` | string | **required** | The command to run |
+| `command` | string | none | The command to run. Required unless you set `agent` |
+| `agent` | string | none | The agent eval name, `<config_dir>/<name>.md`. Conflicts with `command` |
 | `shell` | bool | `true` | Run the command through `sh -c` |
 | `stdout` | string | none | The exact stdout to expect |
 | `stderr` | string | none | The exact stderr to expect |
@@ -352,11 +362,11 @@ assertions:
 
 ### When to use assertions vs transitions
 
-Use a **transition** to test a state change. It says that command X on
-state A produces state B. The filesystem diff is the main check.
+Use a transition to test a state change. It says that command X on state
+A produces state B. The filesystem diff is the main check.
 
-Use an **assertion** to test a property of a state in place. Examples are
-a command exit code, the stdout content, and behavior that depends on
+Use an assertion to test a property of a state in place, such as a
+command exit code, the stdout content, or behavior that depends on
 runtime state such as a git branch.
 
 A state can hold both transitions and assertions. An assertion runs
@@ -370,9 +380,9 @@ Check that a command *must* fail:
 ```yaml
 assertions:
   - name: "init when already initialized fails"
-    command: "tisket init"
+    command: "my-tool init"
     should_fail: true
-    stderr: "error: already initialized (tisket.yml exists)\n"
+    stderr: "error: already initialized (my-tool.yml exists)\n"
 ```
 
 With `should_fail: true`, the assertion passes when the command exits
@@ -388,7 +398,7 @@ reached the state:
 # issue-closed/.missouri/missouri.yml
 assertions:
   - name: "issue status is done"
-    command: "grep -q 'status: done' .tisket/default/fix-the-widget.md"
+    command: "grep -q 'status: done' .my-tool/default/fix-the-widget.md"
 ```
 
 A root state can also hold assertions only. Add `entrypoint: true` to
@@ -398,8 +408,8 @@ verify a pre-built snapshot:
 entrypoint: true
 
 assertions:
-  - name: ".clc directory exists"
-    command: "test -d .clc"
+  - name: ".my-tool directory exists"
+    command: "test -d .my-tool"
   - name: "settings.local.json is valid JSON"
     command: "jq empty .claude/settings.local.json"
 ```
@@ -465,16 +475,14 @@ frontmatter field.
 
 ### When to use agent assertions
 
-Use an agent assertion for a property that needs judgment. Three
-examples:
+Use an agent assertion for a property that needs judgment:
 
 - Do the error messages in this module follow the style guide?
 - Does this skill file name commands that exist?
-- Is this generated documentation clear and complete?
 
 Use a command assertion for a deterministic check, such as a file that
 must exist, output that must match, or an exit code. A command assertion
-is faster, cheaper, and repeatable.
+costs nothing to run and returns the same answer every time.
 
 ## Custom comparators
 
@@ -484,7 +492,7 @@ like this:
 
 ```yaml
 transitions:
-  - command: "clc init"
+  - command: "my-tool init"
     target: "../initialized"
     comparators:
       files:
@@ -526,7 +534,7 @@ your test does not cover:
 ```yaml
 comparators:
   files:
-    - path: ".clc/"
+    - path: ".my-tool/"
       ignore: true
     - path: ".git/"
       ignore: true
@@ -641,13 +649,15 @@ Replay traffic that you recorded earlier:
 
 ```yaml
 transitions:
-  - command: "clc dispatch test"
+  - command: "my-tool dispatch test"
     target: "../next"
     network:
-      replay: .missouri/recordings/worker.flow
+      replay: recordings/worker.flow
 ```
 
-Missouri resolves the `replay` path against the source state directory.
+Missouri resolves the `replay` path against the source state's
+`.missouri/` directory, so the example above reads
+`<source_state>/.missouri/recordings/worker.flow`.
 
 ### Record mode
 
@@ -655,7 +665,7 @@ Record the traffic during a transition:
 
 ```yaml
 transitions:
-  - command: "clc dispatch test"
+  - command: "my-tool dispatch test"
     target: "../next"
     network:
       record: true
@@ -701,33 +711,33 @@ Run the transitions, read the diff, then update the expected state.
 
 ### Debugging failures
 
-**Verbose output** (`-v`): shows the passing steps as well as the
-failures. It prints all assertion output, the command stdout and stderr,
-and the comparison details.
+With `-v`, missouri shows the passing steps as well as the failures. It
+prints all assertion output, the command stdout and stderr, and the
+comparison details.
 
-**Keep temp directories** (`--keep-temp`): missouri keeps the temp
-directories where the transitions ran instead of deleting them. It prints
-the paths in the output. Read them to see what the command produced.
+With `--keep-temp`, missouri keeps the temp directories where the
+transitions ran instead of deleting them. It prints the paths in the
+output. Read them to see what the command produced.
 
-**List paths** before a run to understand the graph:
+List the paths before a run to understand the graph:
 
 ```bash
 missouri list --show paths
-missouri list states -d tests/missouri
-missouri list transitions -d tests/missouri
+missouri list --show states -d tests/missouri
+missouri list --show transitions -d tests/missouri
 ```
 
-## Patterns from the codebase
+## Patterns
 
 ### Pattern: build-then-test with setup
 
-The clc and tisket test suites both build the binary under test in the
-setup phase. The binary on PATH then matches the current source:
+Build the binary under test in the setup phase. The binary on PATH then
+matches the current source:
 
 ```yaml
 # .missouri/missouri.yml
 setup:
-  - name: "build clc"
+  - name: "build my-tool"
     command: "cargo build --quiet --manifest-path ../../Cargo.toml"
 packages:
   - git
@@ -742,21 +752,19 @@ not the point of the test:
 ```yaml
 transitions:
   - name: "close issue"
-    command: "tisket issue close fix-the-widget"
+    command: "my-tool issue close fix-the-widget"
     target: "../issue-closed"
     comparators:
       files:
-        - path: ".tisket/bugs/"
+        - path: ".my-tool/bugs/"
           ignore: true
 ```
 
 ### Pattern: assertion-heavy root states
 
-The clc `initialized` state carries dozens of assertions. They verify the
-result of `clc init`. They check that files exist, that the JSON structure
-is right, that the hooks are wired, and that the commands behave. Together
-they catch regressions in the initialization path. No separate transition
-is needed for each check.
+A state reached by an `init` command can carry dozens of assertions. Each
+one checks a property of the result, so the init path needs one
+transition instead of one per check.
 
 ### Pattern: custom comparator scripts in bin/
 
@@ -811,18 +819,18 @@ Check that a command fails and prints the expected error message:
 ```yaml
 assertions:
   - name: "create issue in nonexistent project fails"
-    command: "tisket issue create 'Something' -p nonexistent"
+    command: "my-tool issue create 'Something' -p nonexistent"
     should_fail: true
     stderr: "error: project 'nonexistent' not found\n"
 
   - name: "close nonexistent issue fails"
-    command: "tisket issue close foo"
+    command: "my-tool issue close foo"
     should_fail: true
     stderr: "error: issue 'foo' not found\n"
 ```
 
 ## Further reading
 
-- [What is Missouri?](/missouri/what-is-missouri) — how a state graph works, why missouri uses env_clear, and the comparison rules
-- [CLI Reference](/missouri/cli-reference) — the full command and config schema reference
-- [Getting Started](/missouri/getting-started) — build your first test suite step by step
+- [What is Missouri?](what-is-missouri.md). How a state graph works, why missouri uses `env_clear`, and the comparison rules.
+- [CLI Reference](cli-reference.md). The full command and config schema reference.
+- [Getting Started](getting-started.md). Build your first test suite step by step.

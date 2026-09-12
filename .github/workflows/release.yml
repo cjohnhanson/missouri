@@ -1,0 +1,546 @@
+# To cut a release, bump the version in Cargo.toml, commit, tag, and
+# push the tag. This workflow runs from the tag.
+#
+# The registry's trusted publishing cannot create a crate that does not
+# exist. The first publish of a name is a manual `cargo publish` with a
+# token. Every release after that runs here.
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  # A dry run. Every build job runs and nothing is uploaded, so the
+  # whole matrix runs before a tag exists. A dispatch carries no tag,
+  # so it has no version to publish and no release to attach.
+  workflow_dispatch:
+
+# Least privilege at the top; each job widens only what it needs.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN_NAME: missouri
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      # The full history, because the tag-on-main check below asks
+      # git for ancestry, and a shallow clone answers that wrong.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A tag is the only trigger, and anyone who can push a tag can
+      # point one at any commit. A tagged commit on main means a release
+      # carries what main carries, and nothing else.
+      - name: Check the tag is on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "tag ${GITHUB_REF_NAME} names a commit that is not on main" >&2
+            exit 1
+          fi
+
+      # A tag that disagrees with the manifest publishes a version
+      # nobody asked for, and a registry keeps it forever.
+      - name: Check the tag matches Cargo.toml
+        if: github.event_name == 'push'
+        run: |
+          manifest="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$manifest" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match Cargo.toml ($manifest)" >&2
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features
+
+      # The merge gate runs this suite on every pull request, so a
+      # release that skipped it would check less than the merge did.
+      - name: Run the missouri suite
+        if: hashFiles('tests/missouri/**') != ''
+        env:
+          MISSOURI_SANDBOX: preinstalled
+        run: |
+          # This repo builds the binary it tests with. Installing it
+          # from git would test a different commit than the tag names.
+          cargo install --path . --locked --force
+          cd tests/missouri && missouri run
+
+      # Catches a packaging fault while the version can still change,
+      # rather than after the registry has it.
+      - name: Package and build from the tarball
+        run: cargo package --locked
+
+  create-release:
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      # A draft until every target uploads, so a failed build never
+      # leaves a half-populated release for anyone to install from.
+      - name: Open the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --draft --verify-tag \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
+
+  build:
+    needs: [verify, create-release]
+    # A dispatch skips create-release, and a skipped dependency
+    # would block this job without the explicit condition.
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static musl, so one Linux artifact runs anywhere and a
+          # future package needs no libc coordination.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            cross: false
+    steps:
+      - uses: actions/checkout@v4
+      # rust-toolchain.toml selects the toolchain for every cargo call,
+      # and the action does not read that file. A target given to the
+      # action lands in `stable`, which nothing here compiles under.
+      # rustup adds it to the pinned toolchain when run in the repository.
+      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # cargo-zigbuild supplies the musl cross linker without a
+      # container, so the matrix stays on plain runners.
+      - name: Install cargo-zigbuild
+        if: matrix.cross
+        run: |
+          pip install ziglang
+          cargo install cargo-zigbuild --locked
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cargo zigbuild --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
+
+      - name: Assemble the archive
+        id: archive
+        run: |
+          staging="${BIN_NAME}-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp "target/${{ matrix.target }}/release/${BIN_NAME}" "$staging/"
+          cp README.md LICENSE "$staging/"
+          # The README promises the man page in every archive. The
+          # target binary may not run on this runner, so a host build
+          # writes it.
+          mkdir -p "$staging/man"
+          cargo run --release --locked --quiet --bin "${BIN_NAME}" -- gen-man "$staging/man"
+          tar czf "$staging.tar.gz" "$staging"
+          shasum -a 256 "$staging.tar.gz" > "$staging.tar.gz.sha256"
+          echo "asset=$staging.tar.gz" >> "$GITHUB_OUTPUT"
+
+      # Records where the binary was built and from which commit.
+      # The npm job assembles its platform packages from these.
+      # A GitHub release asset is a tarball, and unpacking one per
+      # target in another job is more moving parts than an artifact.
+      - name: Upload the raw binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/missouri
+            target/${{ matrix.target }}/release/msri
+          if-no-files-found: error
+
+      # The tap job reads its checksums from here. A draft release is
+      # invisible to a read-only token, and a dispatch has no release.
+      - name: Upload the archive and its checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.target }}
+          path: |
+            ${{ steps.archive.outputs.asset }}
+            ${{ steps.archive.outputs.asset }}.sha256
+          if-no-files-found: error
+
+      - name: Attest the build provenance
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.archive.outputs.asset }}
+
+      - name: Upload to the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            "${{ steps.archive.outputs.asset }}" \
+            "${{ steps.archive.outputs.asset }}.sha256" \
+            --clobber
+
+  publish-crate:
+    # Every artifact, not only this one. See publish-npm.
+    needs: [build, wheels, sdist, npm-packages]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      # `checkout` needs contents. A job that lists any permission
+      # sets every other one to none, and a private repository would
+      # then fail the checkout. Public repositories hide that today.
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+
+  wheels:
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            manylinux: musllinux_1_1
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            manylinux: musllinux_1_1
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # `--compatibility pypi` keeps a wheel's platform tag inside what
+      # PyPI accepts. Without it the upload is rejected after the whole
+      # matrix has already run.
+      #
+      # A musl-only Linux wheel does not install on a glibc interpreter,
+      # so the musl builds carry a manylinux tag as well. The binary is
+      # static, so one file serves both.
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: >-
+            --release --locked --out dist
+            ${{ matrix.manylinux && '--compatibility 2_17' || '' }}
+            --compatibility pypi
+      - name: Check both commands are in the wheel
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob, zipfile, sys
+          names = []
+          for w in glob.glob("dist/*.whl"):
+              names += [n for n in zipfile.ZipFile(w).namelist() if ".data/scripts/" in n]
+          want = {"missouri", "msri"}
+          have = {n.rsplit("/", 1)[-1] for n in names}
+          if not want <= have:
+              print(f"wheel ships {have}, missing {want - have}", file=sys.stderr)
+              raise SystemExit(1)
+          print("wheel ships", sorted(have))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target }}
+          path: dist
+
+  sdist:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist
+
+  publish-pypi:
+    # After the crate, and npm after this. In sequence, a registry that
+    # refuses stops the ones after it; in parallel, two would have taken
+    # the version while the third failed.
+    needs: publish-crate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      # Trusted publishing. No token lives in this repository.
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: astral-sh/setup-uv@v5
+      - run: uv publish -v dist/*
+
+  npm-packages:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          path: staged
+      # `build` uploads one artifact per target. Lay them out as
+      # <dir>/<target>/<binary>, which is what the generator reads.
+      - name: Lay out the built binaries
+        shell: bash
+        run: |
+          mkdir -p bins
+          for d in staged/binaries-*; do
+            target="${d#staged/binaries-}"
+            mkdir -p "bins/$target"
+            find "$d" -type f -name "missouri" -exec cp {} "bins/$target/missouri" \;
+          done
+          ls -R bins
+      # The generator refuses an incomplete set of binaries. The reason
+      # is in npm/generate.mjs.
+      - name: Assemble the packages
+        run: node npm/generate.mjs msri missouri bins
+      - name: Check the wrapper runs
+        run: |
+          npm pack ./npm/msri --pack-destination /tmp
+          npm pack ./npm/msri-linux-x64-musl --pack-destination /tmp
+          mkdir -p /tmp/probe && cd /tmp/probe && npm init -y >/dev/null
+          npm install /tmp/*.tgz
+          npx msri --version
+          npx missouri --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: npm
+
+  publish-npm:
+    # Last of the three registries; see publish-pypi. publish-crate
+    # already waited for every build, so no registry takes a version
+    # while a build is still failing. A partial release cannot be
+    # repaired: a registry allows a yank and never a reuse.
+    needs: publish-pypi
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packages
+          path: npm
+      # actions/upload-artifact carries no file permissions: every file
+      # comes back 644. The generator set 755 on each binary, and npm
+      # packs the mode it finds on disk, so without this the published
+      # package holds a binary that cannot exec. The debs job restores
+      # the bit after the same round trip for the same reason.
+      - name: Restore the execute bit the artifact dropped
+        run: chmod +x npm/msri-*/missouri
+      # Platform packages first, wrapper last. A wrapper published
+      # before its dependencies resolves to nothing for anyone who
+      # installs in that window.
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for d in npm/msri-*; do npm publish "$d" --access public --provenance; done
+          npm publish npm/msri --access public --provenance
+
+
+  debs:
+    needs: build
+    # No job-level gate. A dispatch rehearses the release, and a job
+    # gated here is a job the rehearsal skips. This job and `tap` build
+    # on a dispatch and upload only on a tag.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # One artifact by name lands its files in `path` itself, with no
+      # subdirectory. A pattern download with merge-multiple flattened
+      # the same way, and a copy from staged/binaries-<target>/ found
+      # nothing.
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: staged
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+      # A .deb attached to a release installs with `dpkg -i`. This is
+      # not an apt repository. See [package.metadata.deb] in Cargo.toml.
+      - name: Build the package
+        run: |
+          # --no-build packages what is already on disk, so these lines
+          # copy the build job's artifact into place first.
+          mkdir -p "target/${{ matrix.target }}/release"
+          cp staged/* "target/${{ matrix.target }}/release/"
+          chmod +x "target/${{ matrix.target }}/release"/*
+          cargo deb --target ${{ matrix.target }} --no-build --no-strip
+      - name: Attach it to the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            target/${{ matrix.target }}/debian/*.deb --clobber
+
+
+  tap:
+    # The formula renders on every run, from the build's own archives,
+    # so a dispatch rehearses it. It pushes only after the three
+    # registries hold the version and finalize has cleared the draft
+    # flag: a draft release serves no asset to an anonymous reader, so
+    # a formula pushed before that named archives `brew` could not
+    # fetch.
+    needs: [build, publish-crate, publish-pypi, publish-npm, finalize]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the tap
+        uses: actions/checkout@v4
+        with:
+          repository: cjohnhanson/homebrew-tap
+          # A cross-repository push needs its own token. The default
+          # GITHUB_TOKEN reaches this repository only.
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: archive-*
+          path: dl
+          merge-multiple: true
+      - name: Render the formula
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          fi
+          # The template lives in this repository, so every release
+          # starts from placeholders. Editing the tap's copy in place
+          # filled them once; the second release would have kept the
+          # first release's checksums and reported success.
+          formula="tap/Formula/missouri.rb"
+          cp homebrew/missouri.rb "$formula"
+          declare -A slot=(
+            [aarch64-apple-darwin]=PLACEHOLDER_DARWIN_ARM64
+            [x86_64-apple-darwin]=PLACEHOLDER_DARWIN_X64
+            [aarch64-unknown-linux-musl]=PLACEHOLDER_LINUX_ARM64
+            [x86_64-unknown-linux-musl]=PLACEHOLDER_LINUX_X64
+          )
+          for target in "${!slot[@]}"; do
+            # The build job writes the checksum of the archive it
+            # uploads, so the formula carries the sum of the file it
+            # will fetch.
+            sums=$(ls dl/missouri-*-"${target}".tar.gz.sha256)
+            [ "$(printf '%s\n' "$sums" | wc -l)" -eq 1 ] || { echo "expected one checksum for ${target}, found: ${sums}" >&2; exit 1; }
+            sum=$(cut -d' ' -f1 "$sums")
+            sed -i "s/${slot[$target]}/${sum}/" "$formula"
+          done
+          sed -i "s/^  version \".*\"$/  version \"${version}\"/" "$formula"
+          grep -q PLACEHOLDER "$formula" && { echo "a checksum was not filled" >&2; exit 1; } || true
+          cat "$formula"
+      # `!cancelled()` on the job drops the default success check on
+      # every job in `needs`, so this step requires the three publishes
+      # itself. Without that, a failed publish still pushed a formula
+      # for a release that stayed a draft.
+      - name: Push the formula
+        if: >-
+          github.event_name == 'push'
+          && needs.publish-crate.result == 'success'
+          && needs.publish-pypi.result == 'success'
+          && needs.publish-npm.result == 'success'
+          && needs.finalize.result == 'success'
+        working-directory: tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/missouri.rb
+          git commit -m "missouri ${GITHUB_REF_NAME}"
+          git push
+
+  finalize:
+    needs: [build, debs, publish-crate, publish-pypi, publish-npm]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clear the draft flag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false

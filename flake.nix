@@ -77,9 +77,9 @@
             commonArgs
             // {
               inherit cargoArtifacts;
-              # Unit tests only in the nix check; the missouri suite runs in
-              # development (it needs the missouri binary, which lives in its
-              # own derivation).
+              # Unit tests only in the nix check. The missouri suite runs
+              # in development, because it needs the missouri binary from
+              # its own derivation.
               nativeCheckInputs = with pkgs; [
                 # The illinois fixtures drive these tools.
                 python3

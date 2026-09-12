@@ -17,11 +17,12 @@ use crate::error;
 const TERM_WIDTH: u16 = 80;
 const TERM_HEIGHT: u16 = 24;
 
-/// Record a command execution, producing a .cast file.
+/// Run a command in `work_dir` with the given environment and write a
+/// `.cast` file to `cast_path`.
 ///
-/// Runs `command` through `sh -c` in `work_dir` with the given
-/// environment. Returns the process Output, which holds the status, the
-/// stdout, and the stderr. Writes a `.cast` file to `cast_path`.
+/// When `shell` is true, the command runs through `sh -c`. Otherwise it
+/// splits on whitespace and the program runs directly. Returns the
+/// process output with its exit status, stdout, and stderr.
 pub fn record_command(
     command: &str,
     shell: bool,
@@ -69,8 +70,9 @@ pub fn record_command(
         all_lines.push(format!("{line}\r\n"));
     }
 
-    // Spread the lines across the recording. The recording lasts 3s at
-    // least, or 150ms for each line.
+    // Spread the lines across the recording. The replay lasts at least
+    // three seconds, at least 150ms for each line, and at least as long
+    // as the command took.
     let min_by_lines = all_lines.len() as f64 * 0.15;
     let replay_duration = elapsed.max(min_by_lines).max(3.0);
 
@@ -225,7 +227,8 @@ pub fn read_results(results_path: &Utf8Path) -> std::io::Result<RunResults> {
 }
 
 /// Find a run directory under `<root>/<config_dir>/runs/`. Returns the
-/// named run, or the latest run when the caller names none.
+/// named run, or the last one by name when the caller names none. A
+/// default run id is a timestamp, so that last one is the newest run.
 pub fn find_run_dir(
     root: &Utf8Path,
     config_dir: &str,
@@ -271,7 +274,8 @@ fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-/// Generate an HTML report — rendered markdown with code blocks for output.
+/// Generate a self-contained HTML report for a recorded run. Each step
+/// gets a heading and a code block that holds its command output.
 pub fn generate_html_report(run_dir: &Utf8Path) -> std::io::Result<String> {
     let results = read_results(&run_dir.join("results.json"))?;
 
@@ -295,7 +299,7 @@ pub fn generate_html_report(run_dir: &Utf8Path) -> std::io::Result<String> {
     let status = if results.failed == 0 { "PASS" } else { "FAIL" };
     let status_class = if results.failed == 0 { "pass" } else { "fail" };
     html.push_str(&format!(
-        "<h1>Missouri Test Report — <span class=\"{status_class}\">{status}</span></h1>\n"
+        "<h1>Missouri Test Report: <span class=\"{status_class}\">{status}</span></h1>\n"
     ));
     html.push_str(&format!(
         "<p>Run: <strong>{}</strong> | {} passed, {} failed</p>\n",
@@ -347,7 +351,7 @@ pub fn generate_md_report(run_dir: &Utf8Path) -> std::io::Result<String> {
 
     let mut md = String::new();
     let status = if results.failed == 0 { "PASS" } else { "FAIL" };
-    md.push_str(&format!("# Missouri Test Report — {status}\n\n"));
+    md.push_str(&format!("# Missouri Test Report: {status}\n\n"));
     md.push_str(&format!(
         "Run: **{}** | {} passed, {} failed\n\n",
         results.run_id, results.passed, results.failed
@@ -385,7 +389,7 @@ pub fn print_terminal_report(run_dir: &Utf8Path) -> std::io::Result<()> {
 
     let status = if results.failed == 0 { "PASS" } else { "FAIL" };
     println!(
-        "{status}: run {} — {} passed, {} failed",
+        "{status}: run {}, {} passed, {} failed",
         results.run_id, results.passed, results.failed
     );
 

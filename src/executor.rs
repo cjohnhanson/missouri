@@ -51,8 +51,8 @@ pub trait Backend: std::fmt::Debug + Send + Sync + AsAny {
     ) -> Command;
 
     /// Run a command and return its output. The default builds a local
-    /// Command and runs it. A backend that runs the command elsewhere, for
-    /// example inside a microVM, overrides this method.
+    /// Command and runs it. DockerBackend overrides this method to run the
+    /// command inside a container.
     fn execute(
         &self,
         command: &str,
@@ -81,15 +81,16 @@ pub trait Backend: std::fmt::Debug + Send + Sync + AsAny {
     }
 
     /// True when this backend runs a command inside a Docker container.
-    /// Then execute_transition calls execute() instead of
-    /// build_*_command().
+    /// execute_transition then calls run_in_container instead of
+    /// build_shell_command.
     fn is_docker(&self) -> bool {
         false
     }
 
-    /// Warm the backend so that parallel calls never compete for shared
-    /// state. The default does nothing. NixBackend uses this method to fill
-    /// the nix store cache before the paths run at the same time.
+    /// Warm the backend so that parallel calls do not compete for shared
+    /// state. The default does nothing, and no backend overrides it with
+    /// real work. NixBackend fills the nix store cache from detect_sandbox
+    /// instead, because warm_cache needs `&mut self`.
     fn warm(&self) -> Result<(), String> {
         Ok(())
     }
@@ -137,16 +138,14 @@ impl Backend for BareBackend {
 /// Nix shell sandbox. Each command runs inside
 /// `nix shell nixpkgs#pkg1 ... --command`.
 ///
-/// During warm-up, this backend resolves `nixpkgs` to a pinned flake URL
-/// that holds a commit hash. Every later command then uses
-/// `--no-use-registries`. Parallel paths therefore never compete for the
-/// flake registry file.
+/// Warm-up resolves `nixpkgs` to a pinned flake URL that holds a commit
+/// hash. Every later command adds `--no-use-registries`, so parallel
+/// paths do not read the flake registry file.
 ///
-/// The flag must be the non-deprecated form. The deprecated
-/// `--no-registries` makes nix print a deprecation warning on stderr,
-/// and that warning merges into the stderr of the command under test,
-/// which breaks every stderr assertion in a suite that declares
-/// packages.
+/// The flag is `--no-use-registries`, not the deprecated
+/// `--no-registries`. The deprecated form makes nix print a warning on
+/// stderr, and that warning lands in the stderr of the command under
+/// test.
 #[derive(Debug)]
 pub struct NixBackend {
     /// Absolute path to the `nix` binary.
@@ -294,14 +293,13 @@ fn shell_escape(s: &str) -> String {
     }
 }
 
-/// Docker backend. Each transition runs inside a Docker container. The
-/// container has no network access (`network_mode: "none"`), and bollard
-/// mounts the volumes.
+/// Docker backend. Each transition runs inside its own Docker container.
+/// The container has no network access (`network_mode: "none"`), and
+/// bollard mounts the volumes. Missouri removes the container after the
+/// command finishes.
 ///
-/// Each transition gets a fresh container. Missouri removes the container
-/// after the command finishes. The `execute` method overrides the default
-/// and runs the command inside the container. Nothing calls the
-/// `build_*_command` methods.
+/// `execute` and `run_in_container` do the work. The `build_*_command`
+/// methods panic.
 #[derive(Debug)]
 pub struct DockerBackend {
     image: String,
@@ -319,9 +317,10 @@ impl DockerBackend {
     /// Build a Docker image from a Dockerfile in the given directory.
     /// Returns the image tag.
     ///
-    /// The user owns the Dockerfile. It can use nix, apt, or another tool
-    /// to set up the environment. Missouri builds the Dockerfile and caches
-    /// the result by content hash. It changes nothing else.
+    /// The user owns the Dockerfile and sets up the environment in it with
+    /// nix, apt, or another tool. Missouri tags the image with a hash of
+    /// the Dockerfile content, so a later run with the same Dockerfile
+    /// reuses the image it built before.
     async fn build_image_from_dockerfile(
         &self,
         dockerfile_dir: &Utf8Path,
@@ -334,7 +333,7 @@ impl DockerBackend {
         let dockerfile_content = std::fs::read_to_string(&dockerfile_path)
             .map_err(|e| format!("failed to read {dockerfile_path}: {e}"))?;
 
-        // Hash Dockerfile + all files in the directory for a stable image tag
+        // Hash the Dockerfile content for a stable image tag
         let hash = format!("{:x}", md5_hash(dockerfile_content.as_bytes()));
         let image_tag = format!("missouri:{hash}");
 
@@ -344,7 +343,7 @@ impl DockerBackend {
         }
 
         eprintln!(
-            "missouri: building Docker image from {dockerfile_path} (first build may take several minutes)..."
+            "missouri: building Docker image from {dockerfile_path}. The first build can take several minutes."
         );
 
         // Create a tar archive of the directory (Dockerfile + context)
@@ -373,14 +372,14 @@ impl DockerBackend {
         Ok(image_tag)
     }
 
-    /// Run a command inside a Docker container with network isolation and
-    /// volume mounting, then capture stdout/stderr/exit_code.
+    /// Run a command inside a Docker container that has no network access
+    /// and the work directory mounted. Captures stdout, stderr, and the
+    /// exit code.
     ///
-    /// When `replay_flow` is set, the container uses the mitmproxy image and
-    /// intercepts traffic transparently. iptables redirects outbound port 80
-    /// and port 443 to mitmdump. mitmdump then serves the recorded responses
-    /// from the flow file. The process under test needs no proxy environment
-    /// variable and no application configuration.
+    /// When `replay_flow` is set, the container uses the mitmproxy image.
+    /// iptables redirects outbound port 80 and port 443 to mitmdump, and
+    /// mitmdump serves the recorded responses from the flow file. The
+    /// process under test gets no proxy environment variable.
     fn run_in_container(
         &self,
         command: &str,
@@ -404,10 +403,9 @@ impl DockerBackend {
             // Build env vars as "KEY=VALUE" strings
             let env_vec: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v}")).collect();
 
-            // Determine the Docker image to use:
-            // 1. If replay is active, use the mitmproxy image
-            // 2. If a Dockerfile exists, build it
-            // 3. Otherwise, use the configured default image (or docker_image from config)
+            // Replay uses the mitmproxy image. A Dockerfile in the state's
+            // config directory gets built. Everything else uses the image
+            // from the project config, or the default image.
             let built_image: Option<String> = if let Some(dir) = dockerfile_dir {
                 Some(self.build_image_from_dockerfile(dir, &docker).await?)
             } else {
@@ -465,12 +463,11 @@ impl DockerBackend {
                 .map_err(|e| format!("failed to start container: {e}"))?;
 
 
-            // If replay mode, set up transparent interception inside the container:
-            // 1. Write /etc/hosts entries so hostnames resolve to 127.0.0.1
-            // 2. iptables redirect outbound 80/443 → mitmdump (excluding mitmuser)
-            // 3. Start mitmdump in transparent replay mode (detached exec)
+            // Replay mode intercepts the container's own traffic.
             if replay_flow.is_some() {
-                // Step 1+2: /etc/hosts and iptables (returns immediately)
+                // Point each replay host at 127.0.0.1, then redirect
+                // outbound port 80 and port 443 to mitmdump. The redirect
+                // skips traffic from mitmuser.
                 let mut setup_parts: Vec<String> = replay_hosts
                     .iter()
                     .map(|h| format!("echo '127.0.0.1 {h}' >> /etc/hosts"))
@@ -484,7 +481,7 @@ impl DockerBackend {
                 self.exec_in_container(&docker, &container_id, &setup_parts.join(" && "))
                     .await?;
 
-                // Step 3: start mitmdump as a detached exec (doesn't block)
+                // Start mitmdump. The detached exec returns at once.
                 self.exec_detached(
                     &docker,
                     &container_id,
@@ -703,7 +700,7 @@ impl Backend for DockerBackend {
     }
 
     fn is_docker(&self) -> bool {
-        true // reuses the same execute_transition path
+        true
     }
 }
 
@@ -714,9 +711,9 @@ impl Backend for DockerBackend {
 /// - `SandboxConfig::Packages(pkgs)` → `NixBackend` (or `BareBackend` if preinstalled)
 /// - `SandboxConfig::Docker` → `DockerBackend`
 ///
-/// When `MISSOURI_SANDBOX=preinstalled` is set, a packages config resolves
-/// to `BareBackend`. Missouri then assumes that every tool is already on
-/// PATH. This happens inside a nix derivation where the packages are
+/// When `MISSOURI_SANDBOX=preinstalled` is set, every config resolves to
+/// `BareBackend`, and missouri assumes each tool is already on PATH. The
+/// nix check derivation sets it, because the packages arrive there as
 /// `nativeCheckInputs`.
 pub fn detect_sandbox(graph: &StateGraph) -> error::Result<Box<dyn Backend>> {
     // Check for preinstalled override
@@ -760,9 +757,8 @@ fn which_nix() -> Option<Utf8PathBuf> {
 
 /// Build the extra environment variables needed for mitmproxy interception.
 ///
-/// Sets:
-/// - `HTTPS_PROXY` / `HTTP_PROXY` → `http://127.0.0.1:{port}`
-/// - `NODE_EXTRA_CA_CERTS` → path to the mitmproxy CA certificate
+/// Sets `HTTPS_PROXY` and `HTTP_PROXY` to `http://127.0.0.1:{port}`, and
+/// `NODE_EXTRA_CA_CERTS` to the path of the mitmproxy CA certificate.
 pub fn build_network_env(port: u16) -> BTreeMap<String, String> {
     let proxy = format!("http://127.0.0.1:{port}");
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
@@ -776,10 +772,10 @@ pub fn build_network_env(port: u16) -> BTreeMap<String, String> {
 
 /// Start mitmdump in server-replay mode using the given flow file.
 ///
-/// `path_env` is the PATH to search for the `mitmdump` binary.
-/// Returns a `MitmdumpHandle` that holds the port it found. The handle
-/// kills the process on drop. Returns an error string when mitmdump is
-/// missing, fails to start, or prints no listening port.
+/// `path_env` is the PATH to search for the `mitmdump` binary. The
+/// returned handle carries the port mitmdump printed, and it kills the
+/// process on drop. The error string says which step failed: finding
+/// mitmdump, starting it, or reading a port from its stderr.
 pub fn start_mitmdump_replay(
     flow: &camino::Utf8Path,
     path_env: &str,
@@ -790,7 +786,7 @@ pub fn start_mitmdump_replay(
         .map(|dir| camino::Utf8PathBuf::from(dir).join("mitmdump"))
         .find(|p| p.exists())
         .ok_or_else(|| {
-            "mitmdump not found on PATH — add mitmproxy to packages or install it manually"
+            "mitmdump not found on PATH. Add mitmproxy to packages, or install it manually."
                 .to_string()
         })?;
 
@@ -801,7 +797,7 @@ pub fn start_mitmdump_replay(
         .spawn()
         .map_err(|e| format!("failed to start mitmdump: {e}"))?;
 
-    // Read stderr lines until we find the port announcement.
+    // Read stderr lines until the port announcement appears.
     // Format: "Proxy server listening at http://*:PORT"
     let stderr = child
         .stderr
@@ -829,10 +825,8 @@ pub fn start_mitmdump_replay(
 
 /// Start mitmdump in record mode, writing captured traffic to `output`.
 ///
-/// `path_env` is the PATH to search for the `mitmdump` binary.
-/// Returns a `MitmdumpHandle` that holds the port it found. The handle
-/// kills the process on drop. Returns an error string when mitmdump is
-/// missing, fails to start, or prints no listening port.
+/// `path_env`, the returned handle, and the error cases match
+/// `start_mitmdump_replay`.
 pub fn start_mitmdump_record(
     output: &camino::Utf8Path,
     path_env: &str,
@@ -842,7 +836,7 @@ pub fn start_mitmdump_record(
         .map(|dir| camino::Utf8PathBuf::from(dir).join("mitmdump"))
         .find(|p| p.exists())
         .ok_or_else(|| {
-            "mitmdump not found on PATH — add mitmproxy to packages or install it manually"
+            "mitmdump not found on PATH. Add mitmproxy to packages, or install it manually."
                 .to_string()
         })?;
 
@@ -945,6 +939,15 @@ pub fn start_service(
     use std::io::BufRead;
     use std::os::unix::process::CommandExt;
 
+    // The Docker backend runs a command through the Docker API and has no
+    // host Command to build, so a service has nowhere to run.
+    if sandbox.is_docker() {
+        return Err(format!(
+            "service '{}' cannot start with docker: true; a service runs on the host",
+            config.command
+        ));
+    }
+
     let mut cmd = if config.shell {
         sandbox.build_shell_command(&config.command, work_dir, env, path_env)
     } else {
@@ -1032,8 +1035,8 @@ pub fn start_service(
 
 /// Build environment variables for service ports.
 ///
-/// Single service: sets `PORT`.
-/// Multiple services: sets `PORT_0`, `PORT_1`, etc. Also sets `PORT` = first port.
+/// One service sets `PORT`. More than one sets `PORT_0`, `PORT_1`, and so
+/// on, and sets `PORT` to the first port.
 fn build_service_env(ports: &[u16]) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     match ports.len() {
@@ -1052,7 +1055,8 @@ fn build_service_env(ports: &[u16]) -> BTreeMap<String, String> {
 }
 
 /// Run a readiness check command with exponential backoff.
-/// Retries up to 10 times with 100ms, 200ms, 400ms, ... delays (max 5s each).
+/// Runs the command up to 10 times. The delay starts at 100ms and doubles
+/// after each failure, up to 5s.
 fn run_ready_check(
     command: &str,
     work_dir: &Utf8Path,
@@ -1211,9 +1215,10 @@ pub struct SetupResult {
     pub stderr: String,
 }
 
-/// Run setup commands before test paths. Returns results and whether all passed.
-/// Setup commands always run on the host (BareBackend), never inside a sandbox —
-/// they're for building binaries, initializing state, etc.
+/// Run setup commands before test paths. Returns one result per command,
+/// and stops after the first failure or an interruption. A setup command
+/// always runs on the host through BareBackend, never inside a sandbox,
+/// because it builds binaries and prepares state for the run.
 pub fn run_setup_phase(graph: &StateGraph, _opts: &RunOptions) -> Vec<SetupResult> {
     let base_path = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
     let path_env = build_path_env(None, graph.project_bin.as_deref(), &base_path);
@@ -1436,7 +1441,8 @@ fn run_path_check_only(
             passed = false;
         }
 
-        // Determine a label — use transition name if available, else state name
+        // Label the step with the transition name. The first state has no
+        // transition, so it uses the state name.
         let label = if i > 0 {
             let ti = path.steps[i - 1];
             graph.transitions[ti].name.clone()
@@ -1624,9 +1630,9 @@ fn run_path_transitions(
 
 /// Copy a state's files (excluding .missouri/) to a temp directory.
 ///
-/// Directories in the config directory named `dot-<name>/` are restored as
-/// `.<name>/` in the temp dir. This allows fixtures to carry dotfile state
-/// (`.git/`, `.clc/`, etc.) that can't be tracked directly by git.
+/// A directory in the config directory named `dot-<name>/` becomes
+/// `.<name>/` in the temp dir. A fixture can then carry dotfile state such
+/// as `.git/`, which git cannot track directly.
 fn copy_state_to_temp(
     state_id: StateId,
     graph: &StateGraph,
@@ -1664,12 +1670,13 @@ fn copy_state_to_temp(
 }
 
 /// Recursively copy directory contents, skipping the config directory.
-/// When `skip_gitkeep` is true, `.gitkeep` files are also skipped (used
-/// for dot-dir restoration where `.gitkeep` is git plumbing, not content).
 fn copy_dir_recursive(src: &Utf8Path, dst: &Utf8Path, config_dir: &str) -> std::io::Result<()> {
     copy_dir_recursive_inner(src, dst, config_dir, false)
 }
 
+/// When `skip_gitkeep` is true, the copy also skips `.gitkeep` files. A
+/// dot-dir restore sets it, because a `.gitkeep` there is git plumbing and
+/// not fixture content.
 fn copy_dir_recursive_inner(
     src: &Utf8Path,
     dst: &Utf8Path,
@@ -1728,9 +1735,25 @@ fn run_single_assertion(
     graph: &StateGraph,
     sandbox: &dyn Backend,
 ) -> AssertionResult {
-    // Agent assertions are translated into `missouri agent eval <name>` commands.
-    // The eval command exits 0 on pass and 1 on fail, so the existing assertion
-    // infrastructure handles it without special-casing the result.
+    // The Docker backend runs a command through the Docker API and has no
+    // host Command to build, so an assertion has nowhere to run.
+    if sandbox.is_docker() {
+        return AssertionResult {
+            name: assertion.name.clone(),
+            passed: false,
+            exit_code: None,
+            stdout_diff: None,
+            stderr_diff: None,
+            error: Some(format!(
+                "assertion '{}' cannot run with docker: true; an assertion runs on the host",
+                assertion.name
+            )),
+            duration: Duration::ZERO,
+        };
+    }
+    // An agent assertion runs as `missouri agent eval <name>`. That command
+    // exits 0 when the eval passes and 1 when it fails, so the exit code
+    // decides the result here.
     if let Some(agent_name) = &assertion.agent {
         let assertion_start = std::time::Instant::now();
         let state = &graph.states[assertion.state.0];
@@ -1900,7 +1923,7 @@ fn run_single_assertion(
                 duration: assertion_start.elapsed(),
             };
         }
-        // Command failed as expected — fall through to stdout/stderr comparison
+        // Command failed as expected. Fall through to the output comparison.
     } else if !output.status.success() {
         return AssertionResult {
             name: assertion.name.clone(),
@@ -2331,9 +2354,9 @@ fn execute_transition(
     }
 }
 
-/// Simple hash for generating stable image tags from flake content.
+/// Simple hash for generating stable image tags from Dockerfile content.
 fn md5_hash(data: &[u8]) -> u64 {
-    // FNV-1a hash — not cryptographic, just for cache keys
+    // FNV-1a hash. Not cryptographic, and only used for cache keys.
     let mut hash: u64 = 0xcbf29ce484222325;
     for &byte in data {
         hash ^= byte as u64;
@@ -2342,7 +2365,6 @@ fn md5_hash(data: &[u8]) -> u64 {
     hash
 }
 
-/// Create a tar archive from a directory, an injected Dockerfile, and extra files.
 /// Create a tar archive from a directory for Docker build context.
 fn create_build_context(dir: &Utf8Path) -> std::io::Result<Vec<u8>> {
     let mut archive = tar::Builder::new(Vec::new());
@@ -2370,6 +2392,45 @@ mod tests {
     use super::*;
     use camino::Utf8Path;
     use std::fs;
+
+    #[test]
+    fn a_service_under_docker_is_refused_not_panicked() {
+        let backend = DockerBackend {
+            image: DEFAULT_DOCKER_IMAGE.to_string(),
+        };
+        let config = crate::config::ServiceConfig {
+            command: "python -m http.server".into(),
+            shell: true,
+            port_pattern: None,
+            ready: None,
+        };
+        let err = start_service(
+            &config,
+            Utf8Path::new("/"),
+            &BTreeMap::new(),
+            "/usr/bin",
+            &backend,
+        )
+        .expect_err("a service has no host command under docker");
+        assert!(err.contains("docker: true"), "{err}");
+    }
+
+    #[test]
+    fn a_comparator_under_docker_is_refused_not_panicked() {
+        let backend = DockerBackend {
+            image: DEFAULT_DOCKER_IMAGE.to_string(),
+        };
+        let err = crate::compare::run_comparator(
+            "cmp",
+            Utf8Path::new("/a"),
+            Utf8Path::new("/b"),
+            &[],
+            &BTreeMap::new(),
+            &backend,
+        )
+        .expect_err("a comparator has no host command under docker");
+        assert!(err.contains("docker: true"), "{err}");
+    }
 
     fn make_state(tmp: &Utf8Path, name: &str, yaml: &str) {
         let state_dir = tmp.join(name);

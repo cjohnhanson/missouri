@@ -12,7 +12,7 @@ missouri [OPTIONS] <COMMAND>
 
 End-to-end testing as directed graphs of filesystem states.
 
-## Global Options
+## Global options
 
 | Flag | Description |
 |------|-------------|
@@ -68,7 +68,7 @@ missouri list [OPTIONS]
 
 ### `missouri validate`
 
-Validate the `missouri.yml` files. This command runs nothing else. It checks three things: that every config parses, that every transition target resolves to a real state, and that at least one root state exists.
+Validate the `missouri.yml` files. This command runs nothing else. It checks that every config parses, that every transition target resolves to a real state, and that at least one root state exists.
 
 ```
 missouri validate [OPTIONS]
@@ -161,9 +161,42 @@ command.
 missouri agent fail [DETAILS...]
 ```
 
+### `missouri docs`
+
+Print a page of this documentation. Missouri compiles the pages into the
+binary, so the command works from any directory.
+
+```
+missouri docs [OPTIONS] [TOPIC] [QUERY]
+```
+
+| Argument / Flag | Description |
+|-----------------|-------------|
+| `[TOPIC]` | The topic slug to show, or `search` to search the pages. Omit it to list the topics. |
+| `[QUERY]` | The search query. Use it when the topic is `search`. |
+| `-a, --all` | Print every page whole, in one stream. |
+
+### `missouri docgen`
+
+Render one test path as a document. The output interleaves the state
+prose from each `doc:` field, the file tree of each state, the transition
+command, and the expected stdout.
+
+```
+missouri docgen [OPTIONS]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-d, --dir <DIR>` | Root directory containing states. Default: `.` |
+| `--format <FMT>` | `markdown` or `json`. Default: `markdown`. |
+| `--path <N>` | Which test path to render, counting from 1. Default: `1`. |
+
 ### `missouri serve`
 
-Serve an HTML report locally.
+Not implemented yet. The command checks that a recorded run exists,
+prints a message on stderr, and exits 1. To read a report, run
+`missouri report --format html` and open the file it writes.
 
 ```
 missouri serve [OPTIONS]
@@ -172,12 +205,12 @@ missouri serve [OPTIONS]
 | Flag | Description |
 |------|-------------|
 | `-d, --dir <DIR>` | Root directory containing states. Default: `.` |
-| `--run <ID>` | Specific run ID to serve. Default: latest. |
-| `--port <PORT>` | Port to serve on. Default: `8080`. |
+| `--run <ID>` | The run to check for. Default: latest. |
+| `--port <PORT>` | Accepted and unused. |
 
 ---
 
-## Configuration Reference
+## Configuration reference
 
 Missouri uses YAML config files named `missouri.yml`. There are two levels. The project-level config has one file per project root. The state-level config has one file per state directory.
 
@@ -185,8 +218,8 @@ Missouri uses YAML config files named `missouri.yml`. There are two levels. The 
 
 Missouri loads the project-level config from the first file it finds, in this order:
 
-1. `<root>/missouri.yml` -- the root-level config. It can include `test_dir`.
-2. `<root>/<config_dir>/missouri.yml` -- the config-dir-level config.
+1. `<root>/missouri.yml`, the root-level config. It can include `test_dir`.
+2. `<root>/<config_dir>/missouri.yml`, the config-dir-level config.
 
 The root-level file wins when both files exist.
 
@@ -225,8 +258,8 @@ packages:
 # Workspace mode: a list of member directories.
 # When set, `missouri run` runs each member on its own.
 members:
-  - clc/tests/missouri
-  - tisket/tests/missouri
+  - my-tool/tests/missouri
+  - other-tool/tests/missouri
 ```
 
 #### Fields
@@ -238,6 +271,8 @@ members:
 | `setup` | list of [SetupCommand](#setupcommand) | `[]` | Commands to run before the test paths. |
 | `packages` | list of string | `[]` | Nixpkgs packages for the sandbox. |
 | `members` | list of string | `[]` | Workspace member directories. |
+| `docker` | bool | `false` | Run every transition inside a Docker container with no network access. It overrides `packages`. An assertion, a comparator, and a service run on the host, so missouri refuses each under `docker: true`. |
+| `docker_image` | string | `debian:bookworm-slim` | The image the containers run. Requires `docker: true`. |
 
 #### SetupCommand
 
@@ -303,6 +338,16 @@ assertions:
 
 An empty config (`{}`) is valid. It declares a terminal state with no outgoing transitions and no assertions.
 
+#### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `env` | map | `{}` | Environment variables for this state. Missouri merges them over the project-level env, and a state variable of the same name wins. |
+| `transitions` | list of [Transition](#transition) | `[]` | The transitions out of this state. |
+| `assertions` | list of [Assertion](#assertion) | `[]` | The assertions that check this state. |
+| `entrypoint` | bool | `false` | When true, this state's fixture is a complete start point. A path can begin here, and a path that arrives here stops. |
+| `doc` | string | (none) | Prose that describes this state. `missouri docgen` renders it before the state's file tree. |
+
 #### Transition
 
 | Field | Type | Default | Description |
@@ -311,11 +356,12 @@ An empty config (`{}`) is valid. It declares a terminal state with no outgoing t
 | `command` | string | **required** | The command to run. |
 | `shell` | bool | `true` | Run the command through `sh -c`. When false, missouri splits the command on whitespace. |
 | `target` | string | **required** | The relative path to the target state directory. |
-| `stdout` | string | (none) | The exact stdout to expect. Missouri checks it in Full mode only. |
-| `stderr` | string | (none) | The exact stderr to expect. Missouri checks it in Full mode only. |
-| `services` | list of [Service](#service) | `[]` | Background services to run during this transition. |
+| `stdout` | string | (none) | The exact stdout to expect. Missouri checks it in every mode. |
+| `stderr` | string | (none) | The exact stderr to expect. Missouri checks it in every mode. |
+| `services` | list of [Service](#services) | `[]` | Background services to run during this transition. |
 | `network` | [NetworkConfig](#network-interception) | (none) | The network interception config. |
 | `comparators` | [Comparators](#comparators) | (none) | Change how missouri compares specific files, environment variables, or network requests. |
+| `doc` | string | (none) | Prose that describes this transition. `missouri docgen` renders it. |
 
 #### Assertion
 
@@ -330,7 +376,7 @@ Set `command` or `agent`, but not both.
 | `stdout` | string | (none) | The exact stdout to expect. Applies to command assertions only. |
 | `stderr` | string | (none) | The exact stderr to expect. Applies to command assertions only. |
 | `should_fail` | bool | `false` | When true, the assertion passes if the command exits non-zero. Missouri still matches `stdout` and `stderr` when you set them. Applies to command assertions only. |
-| `services` | list of [Service](#service) | `[]` | Background services to run during this assertion. |
+| `services` | list of [Service](#services) | `[]` | Background services to run during this assertion. |
 
 ### Comparators
 
@@ -344,7 +390,8 @@ A comparator changes how missouri compares a path, an environment variable, or a
 | `command` | string | (none) | A custom comparator command. Missouri passes two paths as arguments: actual, then expected. |
 | `ignore` | bool | `false` | Remove this path from the comparison. |
 
-Set `command` or `ignore: true`, but not both.
+Set `command` or `ignore: true`. When an entry sets both, `ignore` wins
+and the command never runs.
 
 #### Env comparators (`comparators.env`)
 
@@ -362,11 +409,11 @@ Set `command` or `ignore: true`, but not both.
 | `command` | string | (none) | A custom comparator command. |
 | `ignore` | bool | `false` | Remove the matching requests from the comparison. |
 
-### Network Interception
+### Network interception
 
 Configure network interception on each transition under the `network` key. Missouri uses mitmdump, from mitmproxy, to intercept HTTP and HTTPS traffic. Each transition uses one mode.
 
-**Replay mode** -- replay traffic that you recorded earlier:
+Replay mode replays traffic that you recorded earlier:
 
 ```yaml
 network:
@@ -375,7 +422,7 @@ network:
 
 Missouri resolves the `replay` path against the source state's `<config_dir>/` directory.
 
-**Record mode** -- capture the traffic during the transition:
+Record mode captures the traffic during the transition:
 
 ```yaml
 network:
@@ -413,14 +460,14 @@ services:
 | `port_pattern` | string | `listening.*:(\d+)` (runtime default) | A regex that reads the port number from stderr. It must hold exactly one capture group. Missouri applies the default at runtime, not in the config schema. Omit the field to use the default pattern. |
 | `ready` | string | (none) | A readiness check command. Missouri retries it with exponential backoff, from 100ms to 5s, up to 10 times. `$PORT` is set in the environment. |
 
-**Port injection:** The service starts and prints its port to stderr. Missouri reads the port and sets these environment variables:
+The service starts and prints its port to stderr. Missouri reads the port and sets these environment variables:
 
-- One service: `$PORT`.
-- Several services: `$PORT` holds the first service's port. `$PORT_0`, `$PORT_1`, and so on hold each port in order.
+- With one service, `$PORT`.
+- With several services, `$PORT` holds the first service's port, and `$PORT_0`, `$PORT_1`, and so on hold each port in order.
 
 Missouri starts each service in its own process group, so cleanup can stop the whole process tree. Port detection times out after 30 seconds. If the service prints no matching line to stderr in that time, missouri stops the service and fails the step.
 
-### Ignore Patterns
+### Ignore patterns
 
 The file `<config_dir>/ignore`, for example `.missouri/ignore`, uses gitignore syntax. Its patterns remove paths from the filesystem comparison for every transition.
 
@@ -435,18 +482,18 @@ The standard gitignore rules apply. A trailing `/` matches a directory. A `!` ne
 
 When you set `test_dir`, missouri loads the ignore file from the test directory's config directory, for example `tests/.missouri/ignore`.
 
-### Shared Bin Directory
+### Shared bin directory
 
 Missouri prepends `<config_dir>/bin/` to PATH for every command. This works at two levels:
 
-- **Project level:** `<root>/<config_dir>/bin/` -- available to every state and transition.
-- **State level:** `<state>/<config_dir>/bin/` -- available to that state's assertions and to the transitions that start there.
+- The project bin, `<root>/<config_dir>/bin/`, reaches every state and transition.
+- A state bin, `<state>/<config_dir>/bin/`, reaches that state's assertions and the transitions that start there.
 
 The PATH order is state bin, then project bin, then the base PATH.
 
 When you set `test_dir`, missouri looks for the project bin in the test directory first. It then falls back to the root config directory.
 
-### Sandbox / Packages
+### Sandbox and packages
 
 When the project config sets `packages`, every command runs inside `nix shell nixpkgs#pkg1 nixpkgs#pkg2 ... --command`. Missouri resolves the nixpkgs flake reference to a pinned commit hash during a warm-up phase. The warm-up runs before parallel execution starts. This keeps parallel paths from competing for the registry file.
 
@@ -460,22 +507,22 @@ Missouri exits with an error when `packages` is not empty, `nix` is not on PATH,
 
 ---
 
-## State Graph Model
+## State graph model
 
-Missouri models a test suite as a directed graph. The **states** are the nodes. The **transitions** are the edges.
+Missouri models a test suite as a directed graph. The states are the nodes, and the transitions are the edges.
 
-**State:** A directory on disk. Its contents are a snapshot of the filesystem at one point in the test. Each state directory holds a `<config_dir>/missouri.yml` file that declares its outgoing transitions and its assertions.
+A state is a directory on disk. Its contents are a snapshot of the filesystem at one point in the test. Each state directory holds a `<config_dir>/missouri.yml` file that declares its outgoing transitions and its assertions.
 
-**Transition:** A command that changes the filesystem from one state to another. Missouri runs the command in a temp copy of the source state. It then diffs the result against the expected target state.
+A transition is a command that changes the filesystem from one state to another. Missouri runs the command in a temp copy of the source state. It then diffs the result against the expected target state.
 
-**Root state:** A state with no inbound transitions. Test path enumeration starts at the root states.
+A root state has no inbound transitions. Test path enumeration starts at the root states.
 
-**Terminal state:** A state with no outgoing transitions. Its config is empty, or it holds assertions only. A test path ends here.
+A terminal state has no outgoing transitions. Its config is empty, or it holds assertions only. A test path ends here.
 
-**Test path:** A walk through the graph from a root state to a terminal state. Missouri enumerates every such path and runs the paths in parallel. A graph that branches (`A -> B` and `A -> C`) produces two paths.
+A test path is a walk through the graph from a root state. It ends at a terminal state, at a state that sets `entrypoint: true`, or at a cycle where every successor is already visited. Missouri enumerates every such path and runs the paths in parallel. A graph that branches (`A -> B` and `A -> C`) produces two paths.
 
-**Chained paths:** A multi-step path is a path such as `A -> B -> C`. Missouri carries the temp directory from one transition forward as the input to the next. It does not copy the intermediate state from disk again.
+A chained path is a multi-step path such as `A -> B -> C`. Missouri carries the temp directory from one transition forward as the input to the next. It does not copy the intermediate state from disk again.
 
-**Assertions** run at the state boundaries. Full mode is the default. In Full mode, the source state's assertions run before the first transition, and the target state's assertions run after each transition. In CheckOnly mode, only the assertions run. Missouri skips the transitions and the filesystem comparison. In NoCheck mode, missouri skips the assertions.
+Assertions run at the state boundaries. Full mode is the default. In Full mode, the source state's assertions run before the first transition, and the target state's assertions run after each transition. In CheckOnly mode, only the assertions run. Missouri skips the transitions and the filesystem comparison. In NoCheck mode, missouri skips the assertions.
 
-**Workspace mode:** When the project config sets `members`, missouri treats each member directory as its own project. It runs the members one after another and reports the results for each member.
+In workspace mode, set by a `members` list in the project config, missouri treats each member directory as its own project. It runs the members one after another and reports the results for each member.
