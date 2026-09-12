@@ -298,7 +298,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
         }
 
         Command::Run(run_args) => {
-            let dir = resolve_dir(&run_args.dir)?;
+            let dir = resolve_existing_dir(&run_args.dir)?;
 
             // Workspace mode. When the config sets members, run each member on its own.
             if let Some(members) =
@@ -406,7 +406,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             Ok(all_passed)
         }
         Command::List(list_args) => {
-            let dir = resolve_dir(&list_args.dir)?;
+            let dir = resolve_existing_dir(&list_args.dir)?;
 
             if let Some(members) =
                 crate::graph::load_workspace_members(&dir, config_dir).into_diagnostic()?
@@ -416,10 +416,24 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
 
             let graph = crate::graph::StateGraph::discover(&dir, config_dir).into_diagnostic()?;
 
+            // A directory with no state is not an empty listing. It
+            // printed `0 path(s)` and exited 0, which a caller could
+            // not tell from a working suite. `run`, `validate` and
+            // `docgen` all refuse it, and so does this.
+            if graph.states.is_empty() {
+                return Err(no_states(&dir).into());
+            }
+
             match list_args.show {
+                // A graph with no root still has states worth reading,
+                // and that listing is how a reader finds the cycle. So
+                // these two print, and only path enumeration refuses.
                 ListKind::States => crate::report::print_states(&graph),
                 ListKind::Transitions => crate::report::print_transitions(&graph),
                 ListKind::Paths | ListKind::Graph => {
+                    if graph.roots().is_empty() {
+                        return Err(crate::error::Error::NoRoots.into());
+                    }
                     let paths = crate::paths::enumerate_subgraph_paths(&graph);
                     crate::report::print_paths(&paths, &graph);
                 }
@@ -427,7 +441,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             Ok(true)
         }
         Command::Validate(validate_args) => {
-            let dir = resolve_dir(&validate_args.dir)?;
+            let dir = resolve_existing_dir(&validate_args.dir)?;
 
             if let Some(members) =
                 crate::graph::load_workspace_members(&dir, config_dir).into_diagnostic()?
@@ -461,7 +475,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
         }
         Command::State(state_args) => match state_args.command {
             StateCommand::Add(add_args) => {
-                let dir = resolve_dir(&add_args.dir)?;
+                let dir = resolve_existing_dir(&add_args.dir)?;
                 crate::scaffold::add_state(
                     &dir,
                     config_dir,
@@ -474,7 +488,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             }
         },
         Command::Report(report_args) => {
-            let dir = resolve_dir(&report_args.dir)?;
+            let dir = resolve_existing_dir(&report_args.dir)?;
             let run_dir =
                 crate::recorder::find_run_dir(&dir, config_dir, report_args.run.as_deref())?;
 
@@ -498,7 +512,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             Ok(true)
         }
         Command::Serve(serve_args) => {
-            let dir = resolve_dir(&serve_args.dir)?;
+            let dir = resolve_existing_dir(&serve_args.dir)?;
             let _run_dir =
                 crate::recorder::find_run_dir(&dir, config_dir, serve_args.run.as_deref())?;
             // Serve is a placeholder. It only checks that a run exists,
@@ -542,7 +556,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
         },
 
         Command::Doc(doc_args) => {
-            let dir = resolve_dir(&doc_args.dir)?;
+            let dir = resolve_existing_dir(&doc_args.dir)?;
 
             let graph = crate::graph::StateGraph::discover(&dir, config_dir).into_diagnostic()?;
             let roots = graph.roots();
@@ -585,7 +599,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
 /// Run an agent evaluation. Start a Claude agent with the eval prompt and
 /// wait for it to write a verdict sentinel. Exit 0 on pass and 1 on fail.
 fn run_agent_eval(eval_args: &AgentEvalArgs, config_dir: &str) -> miette::Result<bool> {
-    let dir = resolve_dir(&eval_args.dir)?;
+    let dir = resolve_existing_dir(&eval_args.dir)?;
     let (spec, body) = crate::agent_eval::load_eval(&dir, config_dir, &eval_args.name)
         .map_err(|e| miette::miette!("{e}"))?;
 
@@ -685,6 +699,7 @@ fn run_workspace_members(
     let mut all_passed = true;
 
     for member_dir in members {
+        member_exists(member_dir)?;
         let label = member_label(member_dir, workspace_root);
         print_member_header(&label);
 
@@ -758,15 +773,27 @@ fn list_workspace_members(
     list_args: &ListArgs,
 ) -> miette::Result<bool> {
     for member_dir in members {
+        member_exists(member_dir)?;
         let label = member_label(member_dir, workspace_root);
         print_member_header(&label);
 
         let graph = crate::graph::StateGraph::discover(member_dir, config_dir).into_diagnostic()?;
 
+        // The single-project branch refuses these two states, and so do
+        // `run` and `validate` on this path. Without the same refusal
+        // here, `list` answered one fault two ways, chosen by whether
+        // the directory happened to be a workspace.
+        if graph.states.is_empty() {
+            return Err(no_states(member_dir).into());
+        }
+
         match list_args.show {
             ListKind::States => crate::report::print_states(&graph),
             ListKind::Transitions => crate::report::print_transitions(&graph),
             ListKind::Paths | ListKind::Graph => {
+                if graph.roots().is_empty() {
+                    return Err(crate::error::Error::NoRoots.into());
+                }
                 let paths = crate::paths::enumerate_subgraph_paths(&graph);
                 crate::report::print_paths(&paths, &graph);
             }
@@ -782,6 +809,7 @@ fn validate_workspace_members(
     config_dir: &str,
 ) -> miette::Result<bool> {
     for member_dir in members {
+        member_exists(member_dir)?;
         let label = member_label(member_dir, workspace_root);
         let graph = crate::graph::StateGraph::discover(member_dir, config_dir).into_diagnostic()?;
 
@@ -808,14 +836,32 @@ fn validate_workspace_members(
 /// there sends the reader after a transition that does not exist.
 fn no_entry_point(graph: &crate::graph::StateGraph, dir: &Utf8Path) -> crate::error::Error {
     if graph.states.is_empty() {
-        crate::error::Error::NoStates {
-            dir: dir.to_path_buf(),
-        }
+        no_states(dir)
     } else {
         crate::error::Error::NoRoots
     }
 }
 
+/// A directory that holds no state.
+///
+/// This decides nothing about whether a project is declared. An earlier
+/// attempt split the case in two and chose by testing for
+/// `<dir>/<config_dir>`, which called an ordinary workspace member a
+/// directory with no project, because a member declares no config of
+/// its own. `graph::load_project_config` owns that question and reads
+/// two locations. One message that holds for every layout keeps the
+/// answer in one place.
+fn no_states(dir: &Utf8Path) -> crate::error::Error {
+    crate::error::Error::NoStates {
+        dir: dir.to_path_buf(),
+    }
+}
+
+/// Resolve `-d` to an absolute path, without asking whether it exists.
+///
+/// `init` makes the directory it names, so it resolves through here.
+/// Collecting the components drops a `.`, which otherwise printed as
+/// `/path/./no-such-dir` in every message that names the path.
 fn resolve_dir(dir: &Utf8PathBuf) -> miette::Result<camino::Utf8PathBuf> {
     let path = if dir.is_relative() {
         let cwd = std::env::current_dir().into_diagnostic()?;
@@ -823,5 +869,35 @@ fn resolve_dir(dir: &Utf8PathBuf) -> miette::Result<camino::Utf8PathBuf> {
     } else {
         dir.clone()
     };
+    Ok(path.components().collect())
+}
+
+/// Refuse a `members` entry that names no directory.
+///
+/// The walk failed with the bare io message, which named neither the
+/// member nor the key that declared it. The same fault reached through
+/// `-d` names both, and one fault must not get two answers, chosen by
+/// whether the directory happened to be a workspace member.
+fn member_exists(member_dir: &Utf8Path) -> miette::Result<()> {
+    if member_dir.is_dir() {
+        return Ok(());
+    }
+    Err(crate::error::Error::MemberNotFound {
+        dir: member_dir.to_path_buf(),
+    }
+    .into())
+}
+
+/// Resolve `-d` for a command that reads a project that already exists.
+///
+/// Without the check the walk failed with the bare io message, which
+/// named neither the path nor the flag that carried it. The check does
+/// not belong in `resolve_dir`, because `init` creates its directory
+/// and would then refuse the one command that recovers from this.
+fn resolve_existing_dir(dir: &Utf8PathBuf) -> miette::Result<camino::Utf8PathBuf> {
+    let path = resolve_dir(dir)?;
+    if !path.is_dir() {
+        return Err(crate::error::Error::DirNotFound { dir: path }.into());
+    }
     Ok(path)
 }

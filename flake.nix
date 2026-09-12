@@ -62,8 +62,12 @@
           };
 
           commonArgs = {
+            # The version is read from the manifest rather than
+            # repeated. pyproject.toml declares it dynamic and
+            # npm/generate.mjs greps it, so this was the one place a
+            # release had to edit by hand, and no gate reads this file.
             pname = "missouri";
-            version = "0.2.0";
+            version = (craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; }).version;
             inherit src;
             strictDeps = true;
             buildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [

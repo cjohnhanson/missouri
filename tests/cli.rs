@@ -225,6 +225,417 @@ fn cycle_validate_reports_no_roots() {
         .stderr(predicate::str::contains("no entry points"));
 }
 
+// --- An empty directory is a different fault from a cycle ---
+//
+// Both end with no root. "No entry points" sends the reader after an
+// inbound transition that does not exist, because there is no state to
+// carry one. These tests pin each message and the absence of the other,
+// so neutralizing the states check turns them red rather than leaving
+// the suite green.
+//
+// The empty case gets one message for every project layout. An earlier
+// attempt split it in two and chose by testing for <dir>/<config_dir>,
+// which called an ordinary workspace member a directory with no project.
+
+/// A directory holding a project and no state.
+fn initialized_but_stateless() -> tempfile::TempDir {
+    let tmp = tmpdir();
+    missouri()
+        .arg("init")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .success();
+    tmp
+}
+
+#[test]
+fn a_directory_with_no_state_is_refused_for_that() {
+    let tmp = tmpdir();
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no states found"))
+        .stderr(predicate::str::contains("no entry points").not());
+}
+
+#[test]
+fn the_empty_refusal_names_a_command_that_works_in_every_layout() {
+    // One message serves four layouts: no project, a project made by
+    // `init`, a project declared at <root>/missouri.yml, and a
+    // workspace member that declares no config of its own. An earlier
+    // attempt split the message and chose by testing for
+    // <dir>/<config_dir>, which called an ordinary member a directory
+    // with no project and sent it to `init`, writing a file nothing
+    // reads. The advice must hold without knowing the layout.
+    let tmp = initialized_but_stateless();
+    let out = missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no states found"));
+    let raw = String::from_utf8_lossy(&out.get_output().stderr).to_string();
+    let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // The order carries the whole finding, so the order is what is
+    // pinned. The old text named `init` first and `state add` second,
+    // and it contains the `state add` substring too, so a bare
+    // `contains` passes on both and tests nothing.
+    let add = text
+        .find("missouri state add")
+        .unwrap_or_else(|| panic!("the refusal names no way forward: {raw}"));
+    if let Some(init) = text.find("missouri init") {
+        assert!(
+            add < init,
+            "the refusal names `init` before `state add`, and `init` refuses here: {raw}"
+        );
+    }
+
+    // The first command the refusal names must work in this layout.
+    missouri()
+        .arg("state")
+        .arg("add")
+        .arg("first")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .success();
+
+    // And the second must be the one that does not, which is why the
+    // order matters rather than the presence of either name.
+    missouri()
+        .arg("init")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already initialized"));
+}
+
+#[test]
+fn a_root_config_project_is_not_called_a_directory_with_no_project() {
+    // A project declares itself at <root>/missouri.yml as well as at
+    // <root>/.missouri/missouri.yml. `graph::load_project_config` reads
+    // both. A refusal that tested only the second told this layout to
+    // run `init`, which writes a config that layout never reads.
+    let tmp = tmpdir();
+    fs::create_dir_all(tmp.path().join("cases")).unwrap();
+    fs::write(tmp.path().join("missouri.yml"), "test_dir: cases\n").unwrap();
+    let out = missouri()
+        .arg("list")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure();
+    let raw = String::from_utf8_lossy(&out.get_output().stderr).to_string();
+    let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        text.contains("missouri state add"),
+        "a root-config project was not told how to add a state: {raw}"
+    );
+}
+
+#[test]
+fn a_cycle_is_not_reported_as_an_empty_directory() {
+    // Assert the message this case wants as well as the absence of the
+    // other one. Absence alone passes when the run fails for an
+    // unrelated reason.
+    missouri()
+        .arg("run")
+        .arg("-d")
+        .arg(fixture("07-cycle"))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no entry points"))
+        .stderr(predicate::str::contains("no states found").not());
+}
+
+#[test]
+fn validate_refuses_a_directory_with_no_state() {
+    let tmp = tmpdir();
+    missouri()
+        .arg("validate")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no states found"))
+        .stderr(predicate::str::contains("no entry points").not());
+}
+
+#[test]
+fn validate_refuses_a_project_that_declares_no_state() {
+    let tmp = initialized_but_stateless();
+    missouri()
+        .arg("validate")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no states found"));
+}
+
+// --- `list` separates the three states a caller cannot otherwise tell apart ---
+
+#[test]
+fn list_refuses_a_directory_with_no_state() {
+    // It printed `0 path(s)` and exited 0, which reads the same as a
+    // valid suite with no path. A caller cannot act on that.
+    let tmp = tmpdir();
+    missouri()
+        .arg("list")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no states found"));
+}
+
+#[test]
+fn a_directory_that_does_not_exist_is_named_in_the_refusal() {
+    // The bare io error read "No such file or directory (os error 2)"
+    // and named neither the path nor the flag that carried it.
+    // The fixture path carries no `-d`, so the flag assertion below
+    // means something. A path like `/nope-no-such-directory` satisfies
+    // it by accident, because `-directory` holds the substring.
+    const ABSENT: &str = "/zzz_missouri_absent_place";
+    for command in ["run", "list", "validate"] {
+        missouri()
+            .arg(command)
+            .arg("-d")
+            .arg(ABSENT)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(ABSENT))
+            .stderr(predicate::str::contains("-d"));
+    }
+}
+
+#[test]
+fn init_makes_the_directory_its_refusal_recommends() {
+    // The refusal above tells a reader to run `missouri init -d <dir>`.
+    // A directory check in the shared resolver would refuse that command
+    // too, which closes the loop: the tool refuses the one command that
+    // recovers, and names no way out.
+    let tmp = tmpdir();
+    let fresh = tmp.path().join("not-made-yet");
+    missouri()
+        .arg("init")
+        .arg("-d")
+        .arg(&fresh)
+        .assert()
+        .success();
+    assert!(
+        fresh.join(".missouri").is_dir(),
+        "init did not make the project directory it was given"
+    );
+}
+
+#[test]
+fn the_refusal_names_a_command_that_works() {
+    // Pin the two halves together. The advice must name `init`, and
+    // `init` must accept the directory the advice is about.
+    let tmp = tmpdir();
+    let missing = tmp.path().join("absent");
+    let out = missouri()
+        .arg("list")
+        .arg("-d")
+        .arg(&missing)
+        .assert()
+        .failure();
+    // miette wraps the help line, so a phrase can be split across two
+    // lines. Collapse the whitespace before looking for it.
+    let raw = String::from_utf8_lossy(&out.get_output().stderr).to_string();
+    let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        text.contains("missouri init"),
+        "the refusal names no recovery: {raw}"
+    );
+    missouri()
+        .arg("init")
+        .arg("-d")
+        .arg(&missing)
+        .assert()
+        .success();
+}
+
+#[test]
+fn a_refused_path_carries_no_dot_segment() {
+    // `-d ./nope` once printed `/cwd/./nope`. The same artifact was
+    // fixed for init's success line in this branch.
+    let tmp = tmpdir();
+    missouri()
+        .arg("list")
+        .arg("-d")
+        .arg("./nope-relative")
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("/./").not());
+}
+
+#[test]
+fn list_refuses_path_enumeration_on_a_graph_with_no_entry_point() {
+    missouri()
+        .arg("list")
+        .arg("-d")
+        .arg(fixture("07-cycle"))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no entry points"));
+}
+
+#[test]
+fn list_still_shows_the_states_of_a_graph_with_no_entry_point() {
+    // The state listing is how a reader finds the cycle, so it prints.
+    // Assert on the states, not only on the exit code: a `print_states`
+    // that emitted nothing would pass a bare success check.
+    missouri()
+        .arg("list")
+        .arg("--show")
+        .arg("states")
+        .arg("-d")
+        .arg(fixture("07-cycle"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state-a"))
+        .stdout(predicate::str::contains("state-b"));
+}
+
+#[test]
+fn list_still_shows_the_transitions_of_a_graph_with_no_entry_point() {
+    missouri()
+        .arg("list")
+        .arg("--show")
+        .arg("transitions")
+        .arg("-d")
+        .arg(fixture("07-cycle"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state-a"))
+        .stdout(predicate::str::contains("state-b"));
+}
+
+#[test]
+fn list_refuses_a_workspace_member_that_holds_no_state() {
+    // `list_workspace_members` returned before both guards, so the
+    // fault the single-project branch refuses was still reported as
+    // `0 path(s)` and exit 0 here. One fault, two answers, chosen by
+    // whether the directory happened to be a workspace.
+    let tmp = copy_fixture_to_tmp("19-workspace");
+    let member = tmp.path().join("sub-a");
+    fs::remove_dir_all(&member).unwrap();
+    fs::create_dir_all(member.join(".missouri")).unwrap();
+    fs::write(member.join(".missouri/missouri.yml"), "").unwrap();
+
+    missouri()
+        .arg("list")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no states found"));
+}
+
+#[test]
+fn list_refuses_a_workspace_member_with_no_entry_point() {
+    // The roots check on the workspace path was killed by no test.
+    // Weakened, `list` answers a member holding a cycle with a header,
+    // `0 path(s)` and exit 0, which is the fault this branch removes.
+    let tmp = copy_fixture_to_tmp("19-workspace");
+    let member = tmp.path().join("sub-a");
+    fs::remove_dir_all(&member).unwrap();
+    copy_dir_recursive(Path::new(&fixture("07-cycle")), &member);
+
+    missouri()
+        .arg("list")
+        .arg("-d")
+        .arg(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no entry points"));
+}
+
+#[test]
+fn a_workspace_member_that_does_not_exist_is_named() {
+    // The `-d` path names the directory and the flag. A member that is
+    // absent gave the bare io message, naming neither the member nor
+    // the key that declared it, so a workspace with twenty members and
+    // one typo told nobody which one.
+    let tmp = copy_fixture_to_tmp("19-workspace");
+    fs::remove_dir_all(tmp.path().join("sub-a")).unwrap();
+
+    for command in ["list", "validate", "run"] {
+        let out = missouri()
+            .arg(command)
+            .arg("-d")
+            .arg(tmp.path())
+            .assert()
+            .failure();
+        let raw = String::from_utf8_lossy(&out.get_output().stderr).to_string();
+        let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            text.contains("sub-a"),
+            "`{command}` did not name the absent member: {raw}"
+        );
+        assert!(
+            text.contains("members"),
+            "`{command}` did not name the key that declared it: {raw}"
+        );
+        assert!(
+            !text.contains("os error 2"),
+            "`{command}` still reports the bare io message: {raw}"
+        );
+    }
+}
+
+#[test]
+fn state_add_refuses_a_directory_that_does_not_exist() {
+    // Reverting this one call site to the unchecked resolver left the
+    // suite green while `state add -d <typo>` reported success and
+    // built the whole missing tree somewhere the user did not mean.
+    let tmp = tmpdir();
+    let missing = tmp.path().join("not-a-project");
+    missouri()
+        .arg("state")
+        .arg("add")
+        .arg("first")
+        .arg("-d")
+        .arg(&missing)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no directory at"));
+    assert!(
+        !missing.exists(),
+        "a refused `state add` created the directory anyway"
+    );
+}
+
+#[test]
+fn every_listing_kind_refuses_a_directory_with_no_state() {
+    // `--show paths` is the default, and it is refused by the roots
+    // check rather than by the states check. So the states check is
+    // only reachable through the other two kinds, and without these
+    // two cases neutralizing it leaves the whole suite green.
+    for kind in ["states", "transitions", "paths", "graph"] {
+        let tmp = initialized_but_stateless();
+        missouri()
+            .arg("list")
+            .arg("--show")
+            .arg(kind)
+            .arg("-d")
+            .arg(tmp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("no states found"));
+    }
+}
+
 // --- 12: Assertions (transition output + state assertions) ---
 
 #[test]
