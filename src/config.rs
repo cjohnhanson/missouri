@@ -29,10 +29,9 @@ pub struct StateConfig {
 
 /// Network interception config for a transition.
 ///
-/// One variant applies to each transition:
-/// - `Replay { replay, hosts }` — replay the recorded responses through
-///   mitmdump.
-/// - `Record` — start mitmdump in record mode and save the captured flow.
+/// A transition uses one variant or the other. `Replay` serves the
+/// recorded responses back through mitmdump. `Record` starts mitmdump in
+/// record mode and saves the captured flow.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum NetworkConfig {
@@ -225,8 +224,8 @@ pub struct ProjectConfig {
     pub packages: Vec<String>,
 
     /// Member directories for workspace mode.
-    /// When set, `missouri run` visits each member and runs its tests on
-    /// its own.
+    /// When set, `missouri run`, `missouri list`, and `missouri validate`
+    /// visit each member and treat it as its own project.
     #[serde(default)]
     pub members: Vec<Utf8PathBuf>,
 
@@ -258,13 +257,13 @@ fn default_true() -> bool {
 }
 
 /// Parse a state-level missouri.yml file from a string.
-pub fn parse_config(content: &str) -> Result<StateConfig, serde_yml::Error> {
-    serde_yml::from_str(content)
+pub fn parse_config(content: &str) -> Result<StateConfig, yaml_serde::Error> {
+    yaml_serde::from_str(content)
 }
 
 /// Parse a project-level missouri.yml file from a string.
-pub fn parse_project_config(content: &str) -> Result<ProjectConfig, serde_yml::Error> {
-    serde_yml::from_str(content)
+pub fn parse_project_config(content: &str) -> Result<ProjectConfig, yaml_serde::Error> {
+    yaml_serde::from_str(content)
 }
 
 #[cfg(test)]

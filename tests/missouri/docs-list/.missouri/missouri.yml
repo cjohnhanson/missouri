@@ -1,0 +1,11 @@
+# The transition into this state captured `missouri docs`, so the diff
+# already holds the listing. These read the pages themselves.
+assertions:
+  - name: "docs lists every bundled page by slug"
+    command: "grep -q what-is-missouri docs.txt && grep -q cli-reference docs.txt && grep -q writing-tests docs.txt && grep -q getting-started docs.txt"
+
+  - name: "docs prints a page by slug"
+    command: "missouri docs what-is-missouri | grep -q 'filesystem state'"
+
+  - name: "docs refuses an unknown slug"
+    command: "! missouri docs no-such-page"

@@ -122,7 +122,7 @@ fn dfs_with_boundaries(
     let outgoing = graph.outgoing(current);
 
     if outgoing.is_empty() {
-        // Terminal state — emit the path if it has any transitions.
+        // Terminal state. Emit the path if it has any transitions.
         if !current_path.is_empty() {
             results.push(TestPath {
                 start: find_start(graph, current_path),
@@ -410,7 +410,7 @@ transitions:
 
     #[test]
     fn subgraph_no_entrypoints_same_as_enumerate() {
-        // No entrypoints — should produce same results as enumerate_paths
+        // No entrypoints, so the result matches enumerate_paths
         let tmp = tempfile::tempdir().unwrap();
         let root = Utf8Path::from_path(tmp.path()).unwrap();
 

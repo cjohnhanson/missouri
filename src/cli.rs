@@ -59,7 +59,7 @@ pub enum Command {
     /// Generate a report from recorded runs
     Report(ReportArgs),
 
-    /// Serve an HTML report locally
+    /// Serve an HTML report locally (not implemented yet)
     Serve(ServeArgs),
 
     /// Browse bundled documentation
@@ -73,14 +73,13 @@ pub enum Command {
     Agent(AgentArgs),
 }
 
-#[derive(Parser)]
-pub struct DocsArgs {
-    /// Topic slug to display, or "search" to search
-    pub topic: Option<String>,
+pub use diataxis::DocsArgs;
 
-    /// Search query (when topic is "search")
-    pub query: Option<String>,
-}
+/// This tool's own documentation, compiled in.
+///
+/// The build script embedded every page in `docs/`, so nothing here
+/// lists them and `missouri docs` works from any directory.
+static DOCS: &[(&str, &str)] = diataxis::embedded_docs!();
 
 #[derive(Parser)]
 pub struct DocArgs {
@@ -229,7 +228,7 @@ pub struct ServeArgs {
     #[arg(long)]
     pub run: Option<String>,
 
-    /// Port to serve on
+    /// Accepted and unused until serve exists
     #[arg(long, default_value = "8080")]
     pub port: u16,
 }
@@ -312,7 +311,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
 
             let roots = graph.roots();
             if roots.is_empty() {
-                return Err(crate::error::Error::NoRoots.into());
+                return Err(no_entry_point(&graph, &dir).into());
             }
 
             let paths = crate::paths::enumerate_subgraph_paths(&graph);
@@ -440,7 +439,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
 
             let roots = graph.roots();
             if roots.is_empty() {
-                return Err(crate::error::Error::NoRoots.into());
+                return Err(no_entry_point(&graph, &dir).into());
             }
 
             println!(
@@ -454,7 +453,10 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
         Command::Init(init_args) => {
             let dir = resolve_dir(&init_args.dir)?;
             crate::scaffold::init_project(&dir, config_dir).into_diagnostic()?;
-            println!("initialized missouri project at {}", dir.join(config_dir));
+            // Collecting the components drops a `.` from the default
+            // directory, which printed as `/path/./.missouri`.
+            let shown: Utf8PathBuf = dir.join(config_dir).components().collect();
+            println!("initialized missouri project at {shown}");
             Ok(true)
         }
         Command::State(state_args) => match state_args.command {
@@ -499,36 +501,30 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             let dir = resolve_dir(&serve_args.dir)?;
             let _run_dir =
                 crate::recorder::find_run_dir(&dir, config_dir, serve_args.run.as_deref())?;
-            // Serve is a placeholder. It only checks that a run exists.
-            println!("serving on http://localhost:{}", serve_args.port);
-            Ok(true)
+            // Serve is a placeholder. It only checks that a run exists,
+            // and it exits 1 so a caller cannot read the placeholder as
+            // a server that started.
+            eprintln!(
+                "serve is not implemented yet. Write the report with `missouri report --format html`."
+            );
+            Ok(false)
         }
 
-        Command::Docs(args) => match args.topic.as_deref() {
-            None | Some("list") => {
-                crate::docs::list();
-                Ok(true)
-            }
-            Some("search") => {
-                let query = args.query.as_deref().unwrap_or("");
-                if query.is_empty() {
-                    eprintln!("usage: missouri docs search <query>");
-                    return Ok(false);
-                }
-                crate::docs::search(query);
-                Ok(true)
-            }
-            Some(identifier) => {
-                if crate::docs::show(identifier) {
+        Command::Docs(args) => {
+            let set = diataxis::DocSet::from_embedded(DOCS).into_diagnostic()?;
+            match args.request().and_then(|request| set.render(request)) {
+                Ok(text) => {
+                    print!("{text}");
                     Ok(true)
-                } else {
-                    eprintln!("unknown doc: {identifier}");
+                }
+                Err(e) => {
+                    eprintln!("{e}");
                     eprintln!();
-                    crate::docs::list();
+                    print!("{}", set.listing());
                     Ok(false)
                 }
             }
-        },
+        }
 
         Command::Agent(agent_args) => match agent_args.command {
             AgentCommand::Pass => {
@@ -551,7 +547,7 @@ pub fn run_command(config_dir: &str, command: Command) -> miette::Result<bool> {
             let graph = crate::graph::StateGraph::discover(&dir, config_dir).into_diagnostic()?;
             let roots = graph.roots();
             if roots.is_empty() {
-                return Err(crate::error::Error::NoRoots.into());
+                return Err(no_entry_point(&graph, &dir).into());
             }
 
             let paths = crate::paths::enumerate_subgraph_paths(&graph);
@@ -640,7 +636,7 @@ fn run_agent_eval(eval_args: &AgentEvalArgs, config_dir: &str) -> miette::Result
         let json = serde_json::to_string(&input).into_diagnostic()?;
         let _ = writeln!(stdin, "{json}");
         let _ = stdin.flush();
-        // Drop stdin to signal EOF — the agent reads the prompt and runs.
+        // Drop stdin to signal EOF. The agent reads the prompt and runs.
         drop(stdin);
     }
 
@@ -655,7 +651,7 @@ fn run_agent_eval(eval_args: &AgentEvalArgs, config_dir: &str) -> miette::Result
                 Ok(true)
             } else {
                 let details = verdict.details.as_deref().unwrap_or("(no details)");
-                eprintln!("verdict: FAIL — {details}");
+                eprintln!("verdict: FAIL: {details}");
                 Ok(false)
             }
         }
@@ -696,7 +692,7 @@ fn run_workspace_members(
 
         let roots = graph.roots();
         if roots.is_empty() {
-            return Err(crate::error::Error::NoRoots.into());
+            return Err(no_entry_point(&graph, member_dir).into());
         }
 
         let paths = crate::paths::enumerate_subgraph_paths(&graph);
@@ -791,7 +787,7 @@ fn validate_workspace_members(
 
         let roots = graph.roots();
         if roots.is_empty() {
-            return Err(crate::error::Error::NoRoots.into());
+            return Err(no_entry_point(&graph, member_dir).into());
         }
 
         println!(
@@ -802,6 +798,22 @@ fn validate_workspace_members(
         );
     }
     Ok(true)
+}
+
+/// The right refusal when no state can start a path.
+///
+/// An empty root set has two causes and they need different words. A
+/// graph whose states all have inbound transitions is a cycle. A
+/// directory with no states is not a graph at all, and naming a cycle
+/// there sends the reader after a transition that does not exist.
+fn no_entry_point(graph: &crate::graph::StateGraph, dir: &Utf8Path) -> crate::error::Error {
+    if graph.states.is_empty() {
+        crate::error::Error::NoStates {
+            dir: dir.to_path_buf(),
+        }
+    } else {
+        crate::error::Error::NoRoots
+    }
 }
 
 fn resolve_dir(dir: &Utf8PathBuf) -> miette::Result<camino::Utf8PathBuf> {

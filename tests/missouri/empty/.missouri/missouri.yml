@@ -8,3 +8,8 @@ transitions:
     command: "echo direct > direct.txt"
     shell: true
     target: ../with-direct-output
+
+  - name: "docs lists the bundled pages"
+    command: "missouri docs > docs.txt"
+    shell: true
+    target: ../docs-list

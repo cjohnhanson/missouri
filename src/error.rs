@@ -24,7 +24,7 @@ pub enum Error {
     ConfigParse {
         path: Utf8PathBuf,
         #[source]
-        source: serde_yml::Error,
+        source: yaml_serde::Error,
     },
 
     #[error("invalid config: {0}")]
@@ -51,6 +51,18 @@ pub enum Error {
         )
     )]
     NoRoots,
+
+    /// A directory that holds no state at all. `NoRoots` names a graph
+    /// shape, and with no states there is no graph, so it sent the
+    /// reader after an inbound transition that does not exist.
+    #[error("no states found under {dir}")]
+    #[diagnostic(
+        code(missouri::graph::no_states),
+        help(
+            "run `missouri init` to make a project here, then `missouri state add <name>` for the first state"
+        )
+    )]
+    NoStates { dir: Utf8PathBuf },
 
     #[error("transition command failed with exit code {exit_code}")]
     #[diagnostic(code(missouri::exec::command_failed))]

@@ -408,7 +408,7 @@ transitions:
         let graph = StateGraph::discover(root, ".missouri").unwrap();
         let paths = enumerate_paths(&graph);
 
-        // Should not panic — just produces output without prose
+        // Should not panic. It produces output without prose.
         let md = render_markdown(&graph, &paths[0]);
         assert!(
             md.contains("echo hello"),
