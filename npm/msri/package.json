@@ -1,5 +1,5 @@
 {
-	"name": "msri",
+	"name": "@cjohnhanson/msri",
 	"description": "Show-me-state: e2e testing as directed graphs of filesystem states",
 	"bin": {
 		"msri": "bin/run.js",

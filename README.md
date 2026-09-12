@@ -62,14 +62,16 @@ running. An agent assertion hands a judgment call to an LLM.
 
 ## Install
 
-The package is `msri` on PyPI and npm, because `missouri` was taken. The
-command is `missouri` everywhere, and both names install together.
+The package is `msri` on PyPI and npm, because `missouri` was taken. On
+npm it carries the scope, `@cjohnhanson/msri`, because the registry
+refuses `msri` as too close to names it already holds. The command is
+`missouri` everywhere, and both names install together.
 
 ```sh
 cargo install --locked missouri
 brew install cjohnhanson/tap/missouri
 uv tool install msri
-npm install -g msri
+npm install -g @cjohnhanson/msri
 ```
 
 `cargo install` builds from source. It needs Rust 1.88 and a C
@@ -86,7 +88,7 @@ Or run it without installing:
 
 ```sh
 uvx msri run
-npx msri run
+npx @cjohnhanson/msri run
 ```
 
 From that point the [releases

@@ -1,4 +1,5 @@
-//! The short name, so `uvx msri` and `npx msri` work.
+//! The short name, so `uvx msri` works. On npm the wrapper carries the
+//! scope, so the same run reads `npx @cjohnhanson/msri`.
 //!
 //! maturin ties an installed command name to the Cargo bin name, and
 //! refuses a `[project.scripts]` entry beside a binary. A wheel
