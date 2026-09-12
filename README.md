@@ -62,42 +62,50 @@ running. An agent assertion hands a judgment call to an LLM.
 
 ## Install
 
-The package is `msri` on PyPI and npm, because `missouri` was taken. On
-npm it carries the scope, `@cjohnhanson/msri`, because the registry
-refuses `msri` as too close to names it already holds. The command is
-`missouri` everywhere, and both names install together.
+The command is `missouri`, whichever package you install.
 
-```sh
-cargo install --locked missouri
-brew install cjohnhanson/tap/missouri
-uv tool install msri
-npm install -g @cjohnhanson/msri
+**[Archives of precompiled binaries are available for macOS and
+Linux.](https://github.com/cjohnhanson/missouri/releases)** The Linux
+binaries are static executables. Each archive holds the binary, its man
+pages, the README and the licence. There is no Windows build.
+
+| Package manager | Package | Command |
+| --- | --- | --- |
+| [Homebrew](https://brew.sh) | [cjohnhanson/tap/missouri](https://github.com/cjohnhanson/homebrew-tap) | `brew install cjohnhanson/tap/missouri` |
+| [Cargo](https://doc.rust-lang.org/cargo/) | [missouri](https://crates.io/crates/missouri) | `cargo install --locked missouri` |
+| [uv](https://docs.astral.sh/uv/) | [msri](https://pypi.org/project/msri/) | `uv tool install msri` |
+| [npm](https://www.npmjs.com) | [@cjohnhanson/msri](https://www.npmjs.com/package/@cjohnhanson/msri) | `npm install -g @cjohnhanson/msri` |
+
+On Debian or Ubuntu, download the `.deb` from the [releases
+page](https://github.com/cjohnhanson/missouri/releases) and install it:
+
+```
+wget https://github.com/cjohnhanson/missouri/releases/download/v0.2.3/missouri_0.2.3-1_amd64.deb
+sudo dpkg -i missouri_0.2.3-1_amd64.deb
 ```
 
-`cargo install` builds from source. It needs Rust 1.88 and a C
-compiler. The other three carry a prebuilt binary for macOS and Linux,
-x86-64 and arm64, published by a tagged release.
+To run it once without installing anything:
 
-To build the unreleased `main` branch:
-
-```sh
-cargo install --locked --git https://github.com/cjohnhanson/missouri
 ```
-
-Or run it without installing:
-
-```sh
 uvx msri run
 npx @cjohnhanson/msri run
 ```
 
-From that point the [releases
-page](https://github.com/cjohnhanson/missouri/releases) also carries
-prebuilt archives and a `.deb`. Each archive holds the binary and the man
-page. Install a `.deb` with `dpkg -i`: it
-is a file, not a repository, so `apt-get install` does not reach it.
+### Building
 
-Check the install with `missouri --version`.
+missouri is written in Rust, so you need a [Rust
+installation](https://www.rust-lang.org/) to compile it. missouri
+compiles with Rust 1.88 or newer. A C compiler is needed as well, which
+`aws-lc-sys` uses for its cryptography.
+
+To build missouri:
+
+```
+git clone https://github.com/cjohnhanson/missouri
+cd missouri
+cargo build --release
+./target/release/missouri --version
+```
 
 ## Usage
 
