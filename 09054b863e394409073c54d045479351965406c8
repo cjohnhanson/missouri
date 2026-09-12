@@ -1,0 +1,12 @@
+Review record for the scoped npm wrapper and the version it needs.
+
+npm refused the wrapper name. The change scopes it, corrects the three
+prose surfaces that name it, adds a test that ties the README to the
+manifest, and bumps the version. No behaviour changes. The driver
+verified each part directly. Each line states what was checked.
+
+signoff[review-tests] PASS 09054b8 `the_readme_installs_the_name_the_wrapper_publishes` is new and reads the name out of the wrapper manifest, then requires the README to install that name and to hold no bare one; it was killed by mutation, because restoring the bare install line fails it with the name it expected and nothing else in the suite moves; `a_partial_build_writes_one_package_npm_will_install` counted every scoped line and so counted the wrapper's own name once the scope landed, which is a test reading the right file by the wrong rule, and it now excludes the name line; the whole workspace suite is green here, and the pre-push gate runs it again with the missouri paths
+signoff[review-code] PASS 09054b8 the refusal is exact and names the remedy: `403 Package name too similar to existing packages`, with the scoped name to use; the generator reads the wrapper's name from the checked-in manifest and derives nothing from it, so the platform package names, the directory it writes, and the `bin` entries are untouched, and a global install still gives the typed command; the platform packages already carried this scope and published, so the wrapper now matches what it depends on
+signoff[review-docs] PASS 09054b8 `npx` takes a package name rather than a command, so the README's run line, its install line, the binary's module comment and the wrapper test's module comment all name the scoped package; the install section says why in one sentence, because a reader who sees a scope with no reason assumes a typo; every other surface names the command, which did not change
+signoff[review-deps] PASS 09054b8 no dependency is added, removed or moved; the wrapper's optional dependencies keep the names and versions the generator writes, and the lockfile diff holds one line, which is this package's own version entry
+signoff[review-usability] PASS 09054b8 the reader affected types the install command; before this, npm held four platform packages and no wrapper, so every documented npm command failed, and `npm install -g <bare>` failed with a 404 rather than anything that explains itself; the scoped install works and the command it installs is unchanged
