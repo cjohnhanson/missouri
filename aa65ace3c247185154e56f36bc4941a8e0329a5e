@@ -1,0 +1,11 @@
+Review record for the npm publish fix and the version it needs.
+
+The change adds `./` to the paths the npm job publishes, and bumps the
+version so a tag can carry the fix. No product code changes. The driver
+verified both directly. Each line states what was checked.
+
+signoff[review-tests] PASS aa65ace no test reads a workflow file or a version number, so the failing run is the evidence: the npm job reported `git ls-remote ssh://git@github.com/npm/<pkg>.git` and `Permission denied (publickey)`, which is npm resolving a folder argument as a GitHub shorthand; the pre-push gate runs the whole suite and the missouri paths before this branch leaves the machine, and the commit gate ran fmt and clippy clean
+signoff[review-code] PASS aa65ace the same workflow already writes `./npm/<pkg>` in its packages assembly step, and that step passed on every run while the publish step failed, which isolates the prefix as the difference; both lines of the publish step now carry it, and the glob keeps its quoting
+signoff[review-docs] PASS aa65ace the step carries a comment naming the cause and the exact clone npm attempted; no document states the publish command, and no document names a version, because every other file derives it from the manifest
+signoff[review-deps] PASS aa65ace no dependency is added, removed or moved; the lockfile diff holds one line, which is this package's own version entry
+signoff[review-usability] PASS aa65ace no binary, help text or error message changes; the reader affected installs from npm, and what they met was a package that does not exist, because the wrapper and its platform packages never reached the registry
