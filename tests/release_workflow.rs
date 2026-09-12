@@ -69,15 +69,43 @@ fn npm_publish_globs_the_prefix_the_generator_writes() {
     // reports success with no platform package published.
     let line = workflow()
         .lines()
-        .find(|l| l.contains("for d in npm/"))
+        .find(|l| l.contains("for d in ./npm/"))
         .map(str::to_string)
-        .expect("a publish loop over npm/ in the workflow");
-    let glob = between(&line, "for d in npm/", ";").expect("a glob after `for d in npm/`");
+        .expect("a publish loop over ./npm/ in the workflow");
+    let glob = between(&line, "for d in ./npm/", ";").expect("a glob after `for d in ./npm/`");
     assert_eq!(
         glob,
         format!("{SHORT}-*"),
         "the publish loop globs npm/{glob}; the generator writes npm/{SHORT}-<os>-<cpu>"
     );
+}
+
+#[test]
+fn every_npm_publish_path_is_relative() {
+    // npm reads a bare `<a>/<b>` argument as a GitHub shorthand before it
+    // reads it as a folder. `npm publish npm/msri-darwin-arm64` cloned
+    // `github.com/npm/msri-darwin-arm64` and failed on a key it has no
+    // reason to hold, so a tagged release reached three registries and
+    // published nothing to npm.
+    let mut checked = 0;
+    for line in workflow().lines() {
+        let Some(rest) = line.trim().strip_prefix("npm publish ") else {
+            continue;
+        };
+        let path = rest
+            .split_whitespace()
+            .next()
+            .expect("a path after publish");
+        checked += 1;
+        // `"$d"` is the loop variable, and the test above pins the glob
+        // it holds. Every other path is read here.
+        assert!(
+            path.starts_with("./") || path == "\"$d\"",
+            "{WORKFLOW} publishes `{path}`; npm reads that as a GitHub \
+             shorthand. Write `./{path}`."
+        );
+    }
+    assert!(checked > 0, "no `npm publish` line in {WORKFLOW}");
 }
 
 /// The targets the build job's matrix lists.
