@@ -1,0 +1,27 @@
+Review round for the 0.2.1 patch release. Five independent agents read
+4e7f9e8, one for each declared review. Each received its criteria, the
+diff and the repository path, and nothing from the driver's thread. All
+five verdicts are PASS.
+
+An earlier round against this branch returned four blocking findings,
+every one a defect in the patch rather than in the repository, and all
+four are fixed here. The workspace loop did not route member
+directories through the new check. An error split chose between two
+messages by testing for one project layout when the repository supports
+two, so an ordinary workspace member was told it had no project. Two
+tests asserted a substring the superseded text also carried, so
+restoring that text left the suite green. One guard was unreachable
+through the default listing kind.
+
+Minor findings stay in the evidence lines below and go to follow-up
+issues after the merge. Two are prose this branch introduced: a
+dangling "From that point" in the README, and "loop" where the
+repository says "cycle". One is worth its own issue: every error routed
+through `into_diagnostic` drops its declared help text, so several
+pre-existing refusals ship without the remedy they declare.
+
+signoff[review-tests] PASS 4e7f9e8 weakened nine guards and ran the suite after each: eight went red under named tests, and reverting `resolve_existing_dir` at the `docgen`, `report`, `serve` and agent-eval call sites left the whole workspace green; minor: those four sites have no case, and the flake version derivation has none
+signoff[review-code] PASS 4e7f9e8 read the eight `-d` resolve sites and the three workspace loops beside the change; neutralized all five new guards in a scratch copy and six named tests went red; build, `clippy --all-targets --all-features -D warnings` and the full suite are green, and gitleaks found nothing; minor: the `list` match is now duplicated verbatim between the single-project and workspace branches, and `-d` naming an existing file is told to run `init` there, which fails with the bare io message this commit exists to remove.
+signoff[review-docs] PASS 4e7f9e8 swept 22 prose surfaces including error text, code comments, scripts, workflows and the commit message; built the commit and ran every documented command, including the full getting-started walkthrough and each new `list` refusal; evaluated the flake to 0.2.1; minor: README's "From that point" lost its antecedent in this diff, cli-reference says "the loop" where the rest of the repository says "cycle", and every error routed through `into_diagnostic` drops its declared help.
+signoff[review-deps] PASS 4e7f9e8 cargo audit over 433 locked crates reported no advisory and none under `--deny warnings`, the manifest and lock add no dependency, every licence in the graph is permissive against the project's MIT, the crate built and its 73 cli tests passed from a clean extract, and the flake evaluates to 0.2.1 read from Cargo.toml; minor: `resolve_dir` folds a `.` segment but not `..`
+signoff[review-usability] PASS 4e7f9e8 ran it cold from `--help` through eleven states, an absent directory, an uninitialized directory, an initialized project with no state, one state with no transition, a branching graph, a cycle with no root, a malformed config, a state subdirectory, a workspace with a missing member, a workspace with an empty member, and six wrong turns on the flags; first success took four steps all named by `--help`, stdout and stderr separate cleanly, and the 73-test cli suite passes; minor: `--show graph` is byte-identical to `--show paths` and `--help` does not say so, and the no-roots refusal names no file to edit.
