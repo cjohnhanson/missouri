@@ -402,12 +402,17 @@ jobs:
       # Platform packages first, wrapper last. A wrapper published
       # before its dependencies resolves to nothing for anyone who
       # installs in that window.
+      #
+      # Each path carries `./`. npm reads a bare `<a>/<b>` argument as a
+      # GitHub shorthand before it reads it as a folder, so `npm publish
+      # npm/msri-darwin-arm64` cloned `github.com/npm/msri-darwin-arm64`
+      # and failed on a key it has no reason to hold.
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for d in npm/msri-*; do npm publish "$d" --access public --provenance; done
-          npm publish npm/msri --access public --provenance
+          for d in ./npm/msri-*; do npm publish "$d" --access public --provenance; done
+          npm publish ./npm/msri --access public --provenance
 
 
   debs:

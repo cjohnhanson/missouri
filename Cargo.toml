@@ -1,6 +1,6 @@
 [package]
 name = "missouri"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 # 1.88, read from the dependency graph rather than from the edition.
 # Edition 2024 needs 1.85, and a locked dependency here asks for 1.88.
