@@ -65,21 +65,21 @@ running. An agent assertion hands a judgment call to an LLM.
 The package is `msri` on PyPI and npm, because `missouri` was taken. The
 command is `missouri` everywhere, and both names install together.
 
-Not released yet. Until the first tag, build from source:
-
-```sh
-cargo install --locked --git https://github.com/cjohnhanson/missouri
-```
-
-Requires Rust 1.88 and a C compiler. macOS and Linux, x86-64 and arm64.
-
-From the first release onward:
-
 ```sh
 cargo install --locked missouri
 brew install cjohnhanson/tap/missouri
 uv tool install msri
 npm install -g msri
+```
+
+`cargo install` builds from source. It needs Rust 1.88 and a C
+compiler. The other three carry a prebuilt binary for macOS and Linux,
+x86-64 and arm64, published by a tagged release.
+
+To build the unreleased `main` branch:
+
+```sh
+cargo install --locked --git https://github.com/cjohnhanson/missouri
 ```
 
 Or run it without installing:
