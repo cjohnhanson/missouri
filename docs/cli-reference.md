@@ -66,6 +66,19 @@ missouri list [OPTIONS]
 | `paths` | Print all enumerated test paths (root-to-leaf walks). |
 | `graph` | Same as `paths`. |
 
+`list` refuses a directory that holds no state, and names the
+directory. The refusal names `missouri state add`, and names `missouri
+init` for the case where no project exists yet.
+
+Workspace mode refuses each member the same way, and names the member.
+Where a `members` entry names no directory at all, `list`, `validate`
+and `run` all name that entry and the key that declared it.
+
+`list` also refuses `paths` and `graph` on a graph with no root state,
+because there is nothing to walk. A root state is one with no inbound
+transition. `states` and `transitions` still print for such a graph,
+since that listing is how a reader finds the loop.
+
 ### `missouri validate`
 
 Validate the `missouri.yml` files. This command runs nothing else. It checks that every config parses, that every transition target resolves to a real state, and that at least one root state exists.
@@ -356,8 +369,8 @@ An empty config (`{}`) is valid. It declares a terminal state with no outgoing t
 | `command` | string | **required** | The command to run. |
 | `shell` | bool | `true` | Run the command through `sh -c`. When false, missouri splits the command on whitespace. |
 | `target` | string | **required** | The relative path to the target state directory. |
-| `stdout` | string | (none) | The exact stdout to expect. Missouri checks it in every mode. |
-| `stderr` | string | (none) | The exact stderr to expect. Missouri checks it in every mode. |
+| `stdout` | string | (none) | The exact stdout to expect. Missouri checks it in every mode that runs the transition. |
+| `stderr` | string | (none) | The exact stderr to expect. Missouri checks it in every mode that runs the transition. |
 | `services` | list of [Service](#services) | `[]` | Background services to run during this transition. |
 | `network` | [NetworkConfig](#network-interception) | (none) | The network interception config. |
 | `comparators` | [Comparators](#comparators) | (none) | Change how missouri compares specific files, environment variables, or network requests. |

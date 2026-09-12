@@ -52,14 +52,48 @@ pub enum Error {
     )]
     NoRoots,
 
-    /// A directory that holds no state at all. `NoRoots` names a graph
-    /// shape, and with no states there is no graph, so it sent the
-    /// reader after an inbound transition that does not exist.
+    /// A workspace member naming a directory that is not there.
+    ///
+    /// Separate from `DirNotFound` because the remedy differs: the path
+    /// came from the `members` list, not from `-d`, so the reader edits
+    /// the config rather than the command line. Without this the walk
+    /// failed with the bare io message, which named neither the member
+    /// nor the key that declared it.
+    #[error("workspace member not found: {dir}")]
+    #[diagnostic(
+        code(missouri::config::member_not_found),
+        help("a `members` entry names this path. Correct it, or make the directory")
+    )]
+    MemberNotFound { dir: Utf8PathBuf },
+
+    /// A directory that is not there. The bare io error named no path
+    /// and no flag, so a typo in `-d` and a project that was never made
+    /// produced one message the reader could not act on.
+    #[error("no directory at {dir}")]
+    #[diagnostic(
+        code(missouri::config::dir_not_found),
+        help(
+            "check the path given to -d. To make a project there, run `missouri init -d <dir>`, which creates the directory"
+        )
+    )]
+    DirNotFound { dir: Utf8PathBuf },
+
+    /// A directory that holds no state. `NoRoots` names a graph shape,
+    /// and with no states there is no graph, so it sent the reader
+    /// after an inbound transition that does not exist.
+    ///
+    /// The help names both moves, in the order a reader needs them. An
+    /// earlier attempt split this into two errors and chose between
+    /// them by testing for `<dir>/<config_dir>`. A project declares
+    /// itself at `<root>/missouri.yml` as well, and a workspace member
+    /// declares no config of its own, so that test called an ordinary
+    /// member a directory with no project. One message that holds for
+    /// every layout beats a predicate that knows one of them.
     #[error("no states found under {dir}")]
     #[diagnostic(
         code(missouri::graph::no_states),
         help(
-            "run `missouri init` to make a project here, then `missouri state add <name>` for the first state"
+            "add a state with `missouri state add <name>`. Where no project exists yet, run `missouri init -d <dir>` first"
         )
     )]
     NoStates { dir: Utf8PathBuf },
