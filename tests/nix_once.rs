@@ -44,6 +44,7 @@ shell)
 		[ '{mode}' = unreadable ] && {{ printf 'not an environment'; exit 0; }}
 		[ '{mode}' = capture-exits-1 ] && {{ "$@"; exit 1; }}
 	fi
+	ulimit -Sn "$(ulimit -Hn)"
 	exec "$@" ;;
 esac
 exit 2
@@ -97,6 +98,8 @@ fn write_suite(root: &Path) {
     command: "hello-pkg"
     shell: false
     stdout: "hi\n"
+  - name: "the soft open-file limit is the hard limit, as nix shell sets it"
+    command: "test \"$(ulimit -Sn)\" = \"$(ulimit -Hn)\""
 "#,
     )
     .unwrap();
@@ -134,8 +137,11 @@ fn run_suite(mode: Nix) -> Run {
     write_suite(&suite);
 
     let path = format!("{}:/usr/bin:/bin", fake.display());
-    let output = assert_cmd::cargo_bin_cmd!("missouri")
-        .args(["run", "-d"])
+    // missouri starts with a low soft open-file limit, so a command that
+    // inherits it fails the limit assertion.
+    let output = std::process::Command::new("/bin/sh")
+        .args(["-c", "ulimit -Sn 256 && exec \"$0\" run -d \"$1\""])
+        .arg(env!("CARGO_BIN_EXE_missouri"))
         .arg(&suite)
         .env_clear()
         .env("PATH", path)

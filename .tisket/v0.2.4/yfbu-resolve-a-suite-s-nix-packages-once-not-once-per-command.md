@@ -18,7 +18,7 @@ When project config sets `packages`, missouri wraps every transition command, as
 
 Each call waits on the nix daemon. One call takes about 0.8 s on an idle machine and 5 to 20 s when many commands run in parallel. The wait grows with the number of commands that run at the same time because they share one daemon.
 
-For a 37-path suite that lists packages, a run takes 13.1 min instead of 23.5 min with packages already on `PATH` and no wrapper. Summed path time falls from 204 min to 123 min. Every path gives the same verdict. A one-line `jq` assertion takes under 0.05 s instead of 5.0 s.
+With a nix shell wrapper around each command, the 37-path suite that lists packages takes 23.5 min. With the packages already on `PATH` and no wrapper, the same suite takes 13.1 min. Summed path time falls from 204 min to 123 min. Every path gives the same verdict. A one-line `jq` assertion takes under 0.05 s instead of 5.0 s.
 
 ## Change
 

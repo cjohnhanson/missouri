@@ -263,8 +263,8 @@ impl NixBackend {
             }
             Err(reason) => eprintln!(
                 "warning: warm-up could not read the nix environment ({reason}), so each command \
-                 runs in its own nix shell, which is slower; set MISSOURI_SANDBOX=preinstalled \
-                 when the packages are already on PATH"
+                 runs in its own nix shell. If the packages are already on PATH, set \
+                 MISSOURI_SANDBOX=preinstalled."
             ),
         }
         Ok(())
@@ -282,7 +282,7 @@ impl NixBackend {
             .output()
             .map_err(|e| format!("nix shell did not start: {e}"))?;
         if !output.status.success() {
-            return Err(format!("nix shell exited with {}", output.status));
+            return Err("nix shell failed".to_string());
         }
         let env = parse_capture(&output.stdout, CAPTURE_MARKER)
             .ok_or("nix shell printed no PATH of its own")?;
@@ -311,10 +311,7 @@ impl NixBackend {
             .output()
             .map_err(|e| format!("nix build did not start: {e}"))?;
         if !output.status.success() {
-            return Err(format!(
-                "nix build of the store paths exited with {}",
-                output.status
-            ));
+            return Err("nix build failed".to_string());
         }
         Ok((env, roots))
     }
@@ -357,6 +354,25 @@ impl NixBackend {
             if !env.contains_key(key) {
                 cmd.env(key, value);
             }
+        }
+        // nix shell raises the soft open-file limit of the command it runs
+        // to the hard limit. The child does the same here; missouri's own
+        // limit stays as it is.
+        // SAFETY: the closure runs in the child between fork and exec, and
+        // calls only getrlimit and setrlimit, which are async-signal-safe.
+        unsafe {
+            std::os::unix::process::CommandExt::pre_exec(&mut cmd, || {
+                let mut limit = libc::rlimit {
+                    rlim_cur: 0,
+                    rlim_max: 0,
+                };
+                if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) == 0 {
+                    limit.rlim_cur = limit.rlim_max;
+                    // A failure leaves the limit as it was, as under nix.
+                    libc::setrlimit(libc::RLIMIT_NOFILE, &limit);
+                }
+                Ok(())
+            });
         }
         cmd
     }
