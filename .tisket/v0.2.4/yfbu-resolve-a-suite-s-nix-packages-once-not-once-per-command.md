@@ -38,7 +38,7 @@ For a 37-path suite that lists packages, a run takes 13.1 min instead of 23.5 mi
 
 ## Scratch Notes
 
-## Options weighed
+### Options weighed
 
 1. Resolve once per suite (chosen). One `nix shell ... --command /usr/bin/env -0` capture in warm-up, then plain `sh -c` per command. Exact by construction, because the capture is the environment `nix shell` gives a child. On by default. Fallback to today's wrapper when the capture has an unexpected shape.
 2. Build PATH from `nix build --print-out-paths`. Rejected: `nix shell` also follows propagated packages and picks the outputs to install, so a PATH built by hand can differ from the one `nix shell` gives.
@@ -46,9 +46,15 @@ For a 37-path suite that lists packages, a run takes 13.1 min instead of 23.5 mi
 4. Run a suite's graph as a tree, so a shared prefix runs once. Not now: it changes what a run proves (a transition that is not deterministic is shared, not replayed), so it must be opt-in, and after the per-command cost is gone the replay that remains in a large suite is small.
 5. Run workspace members at the same time on one pool. Not now: a large workspace already keeps the pool near full, so the gain is the tail of each member.
 
-## Risks and answers
+### Risks and answers
 
 1. Garbage collection during a run deletes a store path the PATH names. Answer: `nix build --out-link` roots each captured store path in a temporary directory that lives for the run.
 2. A package that ships `sh`. Answer: missouri finds `sh` on the same PATH the wrapper gave it, so the same `sh` runs.
 3. A nix version that changes what `nix shell` sets. Answer: the capture records every variable the call adds and applies it, and the fallback covers an output it cannot read.
 4. Stderr: `nix shell` can print warnings into a command's stderr today. Without the wrapper those lines are gone. A suite that pins nix's own warning text in an expected stderr would see a difference. No example graph does.
+5. HOME: a `nix shell` around a command that declares `HOME` writes nix's evaluation cache under that `HOME`. Without the wrapper nix writes nothing there. A suite whose expected state holds that cache would see a difference. No example graph does.
+
+### Measured
+
+1. Example graph 10-uv: same verdict (1 passed, 3 steps, 4 assertions), path time 0.9 s against 11.8 s with 0.2.3.
+2. A ten-member workspace whose suites list packages: 9.0 min with this change and no other, against 10.6 min for the same tree run inside one outer nix shell with MISSOURI_SANDBOX=preinstalled. Every member gave the same pass, step and assertion counts in both runs, with no fallback warning.

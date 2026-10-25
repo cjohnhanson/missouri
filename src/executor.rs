@@ -262,7 +262,9 @@ impl NixBackend {
                 self.gc_roots = Some(roots);
             }
             Err(reason) => eprintln!(
-                "warning: each command runs in its own nix shell, which is slower: {reason}"
+                "warning: warm-up could not read the nix environment ({reason}), so each command \
+                 runs in its own nix shell, which is slower; set MISSOURI_SANDBOX=preinstalled \
+                 when the packages are already on PATH"
             ),
         }
         Ok(())
@@ -278,15 +280,17 @@ impl NixBackend {
             .env_clear()
             .env("PATH", CAPTURE_MARKER)
             .output()
-            .map_err(|e| format!("the environment capture did not start: {e}"))?;
+            .map_err(|e| format!("nix shell did not start: {e}"))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("the environment capture failed: {stderr}"));
+            return Err(format!("nix shell exited with {}", output.status));
         }
         let env = parse_capture(&output.stdout, CAPTURE_MARKER)
-            .ok_or("the environment capture printed no PATH in front of the marker")?;
+            .ok_or("nix shell printed no PATH of its own")?;
 
-        let roots = TempDir::new().map_err(|e| format!("no directory for the GC roots: {e}"))?;
+        // The roots last as long as this directory. A run that is killed
+        // never removes it, so its roots stay in the temp directory until
+        // something cleans that up.
+        let roots = TempDir::new().map_err(|e| format!("no temp directory: {e}"))?;
         let mut store_paths: Vec<&str> = env
             .path_prefix
             .split(':')
@@ -305,10 +309,12 @@ impl NixBackend {
             .arg(&link)
             .args(&store_paths)
             .output()
-            .map_err(|e| format!("the GC root build did not start: {e}"))?;
+            .map_err(|e| format!("nix build did not start: {e}"))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("the GC root build failed: {stderr}"));
+            return Err(format!(
+                "nix build of the store paths exited with {}",
+                output.status
+            ));
         }
         Ok((env, roots))
     }
@@ -334,11 +340,14 @@ impl NixBackend {
                 .env("PATH", path_env);
             return cmd;
         };
-        // The PATH `nix shell` gives its child, and the `sh` it would find
-        // on that PATH.
-        let path = format!("{}:{path_env}", resolved.path_prefix);
-        let sh = which("sh", &path).unwrap_or_else(|| Utf8PathBuf::from("sh"));
-        let mut cmd = Command::new(sh.as_str());
+        // The PATH `nix shell` gives its child. Command looks `sh` up on the
+        // PATH set here, as `nix shell` does.
+        let path = if path_env.is_empty() {
+            resolved.path_prefix.clone()
+        } else {
+            format!("{}:{path_env}", resolved.path_prefix)
+        };
+        let mut cmd = Command::new("sh");
         cmd.args(["-c", &wrapped])
             .current_dir(work_dir.as_std_path())
             .env_clear()
@@ -868,14 +877,14 @@ pub fn detect_sandbox(graph: &StateGraph) -> error::Result<Box<dyn Backend>> {
 
 /// Resolve the absolute path to `nix` from the current process's PATH.
 fn which_nix() -> Option<Utf8PathBuf> {
-    which("nix", &std::env::var("PATH").ok()?)
-}
-
-/// The first `name` in a directory of `path`, a colon-separated list.
-fn which(name: &str, path: &str) -> Option<Utf8PathBuf> {
-    path.split(':')
-        .map(|dir| Utf8PathBuf::from(dir).join(name))
-        .find(|candidate| candidate.exists())
+    let path_var = std::env::var("PATH").ok()?;
+    for dir in path_var.split(':') {
+        let candidate = Utf8PathBuf::from(dir).join("nix");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    std::option::Option::None
 }
 
 /// Build the extra environment variables needed for mitmproxy interception.
@@ -2880,6 +2889,7 @@ transitions:
             None
         );
         assert_eq!(parse_capture(b"PATH=/m\0", "/m"), None);
+        assert_eq!(parse_capture(b"PATH=:/m\0", "/m"), None);
         assert_eq!(parse_capture(b"HOME=/h\0", "/m"), None);
         assert_eq!(parse_capture(b"not an environment", "/m"), None);
     }
@@ -2899,7 +2909,7 @@ transitions:
         let env = BTreeMap::from([("KEPT".to_string(), "state".to_string())]);
         let cmd = backend.build_shell_command("true", Utf8Path::new("/"), &env, "/usr/bin:/bin");
         let program = cmd.get_program().to_string_lossy().into_owned();
-        assert!(program.ends_with("/sh"), "expected sh, got {program}");
+        assert_eq!(program, "sh");
         let args: Vec<String> = cmd
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
@@ -2917,6 +2927,46 @@ transitions:
         assert_eq!(envs["PATH"].as_deref(), Some("/pkg/bin:/usr/bin:/bin"));
         assert_eq!(envs["ADDED"].as_deref(), Some("1"));
         assert_eq!(envs["KEPT"].as_deref(), Some("state"));
+    }
+
+    fn resolved_backend(path_prefix: &str) -> NixBackend {
+        NixBackend {
+            nix_bin: Utf8PathBuf::from("/nonexistent/nix"),
+            packages: vec!["jq".into()],
+            pinned_nixpkgs: None,
+            resolved: Some(NixEnv {
+                path_prefix: path_prefix.into(),
+                extra: Vec::new(),
+            }),
+            gc_roots: None,
+        }
+    }
+
+    #[test]
+    fn a_resolved_backend_runs_the_sh_a_package_ships() {
+        let pkg = tempfile::tempdir().unwrap();
+        let pkg_bin = Utf8Path::from_path(pkg.path()).unwrap();
+        let sh = pkg_bin.join("sh");
+        fs::write(&sh, "#!/bin/sh\necho package-sh\n").unwrap();
+        fs::set_permissions(&sh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let backend = resolved_backend(pkg_bin.as_str());
+        let output = backend
+            .build_shell_command("true", pkg_bin, &BTreeMap::new(), "/usr/bin:/bin")
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "package-sh\n");
+    }
+
+    #[test]
+    fn an_empty_command_path_leaves_no_trailing_colon() {
+        let backend = resolved_backend("/pkg/bin");
+        let cmd = backend.build_shell_command("true", Utf8Path::new("/"), &BTreeMap::new(), "");
+        let path = cmd
+            .get_envs()
+            .find(|(k, _)| *k == "PATH")
+            .and_then(|(_, v)| v)
+            .map(|v| v.to_string_lossy().into_owned());
+        assert_eq!(path.as_deref(), Some("/pkg/bin"));
     }
 
     #[test]

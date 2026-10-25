@@ -49,8 +49,8 @@ environment variable from the host. Declare every variable a test needs
 in the test config. The test then behaves the same on your machine and in
 CI.
 
-For stronger isolation, missouri also runs a command inside a nix shell
-or a Docker container.
+A `packages` list gives each command programs from nixpkgs. With
+`docker: true`, missouri runs a command inside a Docker container.
 
 ## Beyond filesystem diffs
 
