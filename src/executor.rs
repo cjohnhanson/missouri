@@ -155,6 +155,49 @@ pub struct NixBackend {
     /// Pinned nixpkgs flake URL (resolved during warm-up).
     /// When set, used instead of bare `nixpkgs` to avoid registry lookups.
     pinned_nixpkgs: Option<String>,
+    /// The environment one `nix shell` gives a child, captured during
+    /// warm-up. When set, each command runs without its own `nix shell`.
+    resolved: Option<NixEnv>,
+    /// Holds the out-links that root the captured store paths for the
+    /// run, so a garbage collection cannot delete them.
+    gc_roots: Option<TempDir>,
+}
+
+/// What `nix shell` adds to a child's environment: the directories it
+/// puts in front of PATH, and any other variable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NixEnv {
+    path_prefix: String,
+    extra: Vec<(String, String)>,
+}
+
+/// The PATH the capture runs with. It names no directory, so the text in
+/// front of it in the captured PATH is what `nix shell` added.
+const CAPTURE_MARKER: &str = "/nonexistent/missouri-path-marker";
+
+/// Read the output of `nix shell ... --command /usr/bin/env -0`, run with
+/// a cleared environment and `marker` as PATH. `None` when the output does
+/// not have that shape.
+fn parse_capture(output: &[u8], marker: &str) -> Option<NixEnv> {
+    let text = std::str::from_utf8(output).ok()?;
+    let mut path_prefix = None;
+    let mut extra = Vec::new();
+    for entry in text.split('\0').filter(|entry| !entry.is_empty()) {
+        let (key, value) = entry.split_once('=')?;
+        if key == "PATH" {
+            let prefix = value.strip_suffix(marker)?.strip_suffix(':')?;
+            if prefix.is_empty() {
+                return None;
+            }
+            path_prefix = Some(prefix.to_string());
+        } else {
+            extra.push((key.to_string(), value.to_string()));
+        }
+    }
+    Some(NixEnv {
+        path_prefix: path_prefix?,
+        extra,
+    })
 }
 
 impl NixBackend {
@@ -212,7 +255,101 @@ impl NixBackend {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!("nix cache warm failed: {stderr}"));
         }
+
+        match self.capture_env() {
+            Ok((env, roots)) => {
+                self.resolved = Some(env);
+                self.gc_roots = Some(roots);
+            }
+            Err(reason) => eprintln!(
+                "warning: each command runs in its own nix shell, which is slower: {reason}"
+            ),
+        }
         Ok(())
+    }
+
+    /// Run one `nix shell` that prints its child's environment, then root
+    /// the store paths it put on PATH for the rest of the run.
+    fn capture_env(&self) -> Result<(NixEnv, TempDir), String> {
+        let mut args = self.nix_prefix_args();
+        args.extend(["/usr/bin/env".into(), "-0".into()]);
+        let output = std::process::Command::new(self.nix_bin.as_str())
+            .args(&args)
+            .env_clear()
+            .env("PATH", CAPTURE_MARKER)
+            .output()
+            .map_err(|e| format!("the environment capture did not start: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("the environment capture failed: {stderr}"));
+        }
+        let env = parse_capture(&output.stdout, CAPTURE_MARKER)
+            .ok_or("the environment capture printed no PATH in front of the marker")?;
+
+        let roots = TempDir::new().map_err(|e| format!("no directory for the GC roots: {e}"))?;
+        let mut store_paths: Vec<&str> = env
+            .path_prefix
+            .split(':')
+            .map(|dir| Utf8Path::new(dir).parent().map_or(dir, |p| p.as_str()))
+            .collect();
+        store_paths.sort_unstable();
+        store_paths.dedup();
+        let link = roots.path().join("root");
+        let output = std::process::Command::new(self.nix_bin.as_str())
+            .args([
+                "build",
+                "--extra-experimental-features",
+                "nix-command flakes",
+            ])
+            .arg("--out-link")
+            .arg(&link)
+            .args(&store_paths)
+            .output()
+            .map_err(|e| format!("the GC root build did not start: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("the GC root build failed: {stderr}"));
+        }
+        Ok((env, roots))
+    }
+
+    /// A command that runs `sh -c <wrapped>` with the packages on PATH:
+    /// directly when warm-up captured the environment, else inside its own
+    /// `nix shell`. `path_env` is the PATH missouri built for the command.
+    fn sh_command(
+        &self,
+        wrapped: String,
+        work_dir: &Utf8Path,
+        env: &BTreeMap<String, String>,
+        path_env: &str,
+    ) -> Command {
+        let Some(resolved) = &self.resolved else {
+            let mut args = self.nix_prefix_args();
+            args.extend(["sh".into(), "-c".into(), wrapped]);
+            let mut cmd = Command::new(self.nix_bin.as_str());
+            cmd.args(&args)
+                .current_dir(work_dir.as_std_path())
+                .env_clear()
+                .envs(env.iter())
+                .env("PATH", path_env);
+            return cmd;
+        };
+        // The PATH `nix shell` gives its child, and the `sh` it would find
+        // on that PATH.
+        let path = format!("{}:{path_env}", resolved.path_prefix);
+        let sh = which("sh", &path).unwrap_or_else(|| Utf8PathBuf::from("sh"));
+        let mut cmd = Command::new(sh.as_str());
+        cmd.args(["-c", &wrapped])
+            .current_dir(work_dir.as_std_path())
+            .env_clear()
+            .envs(env.iter())
+            .env("PATH", path);
+        for (key, value) in &resolved.extra {
+            if !env.contains_key(key) {
+                cmd.env(key, value);
+            }
+        }
+        cmd
     }
 }
 
@@ -245,15 +382,7 @@ impl Backend for NixBackend {
         } else {
             format!("export PATH=\"{project_dirs}:$PATH\"; {command}")
         };
-        let mut args = self.nix_prefix_args();
-        args.extend(["sh".into(), "-c".into(), wrapped]);
-        let mut cmd = Command::new(self.nix_bin.as_str());
-        cmd.args(&args)
-            .current_dir(work_dir.as_std_path())
-            .env_clear()
-            .envs(env.iter())
-            .env("PATH", path_env);
-        cmd
+        self.sh_command(wrapped, work_dir, env, path_env)
     }
 
     fn build_direct_command(
@@ -270,15 +399,7 @@ impl Backend for NixBackend {
             .collect::<Vec<_>>()
             .join(" ");
         let wrapped = format!("export PATH=\"{path_env}:$PATH\"; {inner}");
-        let mut args = self.nix_prefix_args();
-        args.extend(["sh".into(), "-c".into(), wrapped]);
-        let mut cmd = Command::new(self.nix_bin.as_str());
-        cmd.args(&args)
-            .current_dir(work_dir.as_std_path())
-            .env_clear()
-            .envs(env.iter())
-            .env("PATH", path_env);
-        cmd
+        self.sh_command(wrapped, work_dir, env, path_env)
     }
 }
 
@@ -731,6 +852,8 @@ pub fn detect_sandbox(graph: &StateGraph) -> error::Result<Box<dyn Backend>> {
                 nix_bin,
                 packages: packages.clone(),
                 pinned_nixpkgs: None,
+                resolved: None,
+                gc_roots: None,
             };
             backend
                 .warm_cache()
@@ -745,14 +868,14 @@ pub fn detect_sandbox(graph: &StateGraph) -> error::Result<Box<dyn Backend>> {
 
 /// Resolve the absolute path to `nix` from the current process's PATH.
 fn which_nix() -> Option<Utf8PathBuf> {
-    let path_var = std::env::var("PATH").ok()?;
-    for dir in path_var.split(':') {
-        let candidate = Utf8PathBuf::from(dir).join("nix");
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    std::option::Option::None
+    which("nix", &std::env::var("PATH").ok()?)
+}
+
+/// The first `name` in a directory of `path`, a colon-separated list.
+fn which(name: &str, path: &str) -> Option<Utf8PathBuf> {
+    path.split(':')
+        .map(|dir| Utf8PathBuf::from(dir).join(name))
+        .find(|candidate| candidate.exists())
 }
 
 /// Build the extra environment variables needed for mitmproxy interception.
@@ -2724,6 +2847,76 @@ transitions:
             return;
         }
         assert!(result.unwrap().as_str().ends_with("nix"));
+    }
+
+    #[test]
+    fn a_capture_gives_the_path_prefix() {
+        let out = b"PATH=/nix/store/a-jq/bin:/nix/store/b-jq-man/bin:/m\0";
+        let env = parse_capture(out, "/m").unwrap();
+        assert_eq!(
+            env.path_prefix,
+            "/nix/store/a-jq/bin:/nix/store/b-jq-man/bin"
+        );
+        assert!(env.extra.is_empty());
+    }
+
+    #[test]
+    fn a_capture_keeps_each_variable_nix_added() {
+        let out = b"__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0\0PATH=/nix/store/a-jq/bin:/m\0";
+        let env = parse_capture(out, "/m").unwrap();
+        assert_eq!(
+            env.extra,
+            vec![(
+                "__CF_USER_TEXT_ENCODING".to_string(),
+                "0x1F5:0x0:0x0".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn a_capture_without_the_marker_is_refused() {
+        assert_eq!(
+            parse_capture(b"PATH=/nix/store/a-jq/bin:/usr/bin\0", "/m"),
+            None
+        );
+        assert_eq!(parse_capture(b"PATH=/m\0", "/m"), None);
+        assert_eq!(parse_capture(b"HOME=/h\0", "/m"), None);
+        assert_eq!(parse_capture(b"not an environment", "/m"), None);
+    }
+
+    #[test]
+    fn a_resolved_backend_runs_sh_with_the_packages_in_front_of_path() {
+        let backend = NixBackend {
+            nix_bin: Utf8PathBuf::from("/nonexistent/nix"),
+            packages: vec!["jq".into()],
+            pinned_nixpkgs: None,
+            resolved: Some(NixEnv {
+                path_prefix: "/pkg/bin".into(),
+                extra: vec![("ADDED".into(), "1".into()), ("KEPT".into(), "nix".into())],
+            }),
+            gc_roots: None,
+        };
+        let env = BTreeMap::from([("KEPT".to_string(), "state".to_string())]);
+        let cmd = backend.build_shell_command("true", Utf8Path::new("/"), &env, "/usr/bin:/bin");
+        let program = cmd.get_program().to_string_lossy().into_owned();
+        assert!(program.ends_with("/sh"), "expected sh, got {program}");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args, vec!["-c".to_string(), "true".to_string()]);
+        let envs: BTreeMap<String, Option<String>> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().into_owned(),
+                    v.map(|v| v.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        assert_eq!(envs["PATH"].as_deref(), Some("/pkg/bin:/usr/bin:/bin"));
+        assert_eq!(envs["ADDED"].as_deref(), Some("1"));
+        assert_eq!(envs["KEPT"].as_deref(), Some("state"));
     }
 
     #[test]

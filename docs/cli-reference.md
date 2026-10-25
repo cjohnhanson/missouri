@@ -260,9 +260,9 @@ setup:
   - command: "db-seed"
     shell: false
 
-# Nix packages to provide through `nix shell`.
-# When this list is not empty, every command runs inside a nix shell
-# with these packages.
+# Nixpkgs packages for transition, assertion, and comparator commands.
+# Commands use the environment from one warm-up `nix shell`.
+# If missouri cannot read that environment, each command runs inside its own `nix shell`.
 packages:
   - python3
   - uv
@@ -508,7 +508,9 @@ When you set `test_dir`, missouri looks for the project bin in the test director
 
 ### Sandbox and packages
 
-When the project config sets `packages`, every command runs inside `nix shell nixpkgs#pkg1 nixpkgs#pkg2 ... --command`. Missouri resolves the nixpkgs flake reference to a pinned commit hash during a warm-up phase. The warm-up runs before parallel execution starts. This keeps parallel paths from competing for the registry file.
+When the project config sets `packages`, missouri gets the packages from nixpkgs through `nix shell`. A warm-up step runs once per suite, before the paths run in parallel. During warm-up, missouri resolves the `nixpkgs` flake reference to a pinned commit hash. Parallel commands never read the flake registry. During warm-up, missouri runs one `nix shell` with the packages and records the environment it gives a command. This environment puts the package directories first in `PATH` and includes any other variables that `nix shell` sets. missouri roots those store paths to prevent garbage collection from deleting them during the run.
+
+Every transition, assertion, and comparator command then uses that environment without its own `nix shell`. Each command sees the same `PATH` as a command inside `nix shell`. If missouri cannot read the environment from warm-up, it prints a warning. In this case, missouri runs each command inside its own `nix shell`. This fallback takes more time.
 
 The `MISSOURI_SANDBOX` environment variable overrides the sandbox behavior:
 
