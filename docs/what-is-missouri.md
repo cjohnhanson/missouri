@@ -183,8 +183,9 @@ model.
 A Docker-based e2e test gives you isolation, but a container costs time,
 and a container does not model a state graph well. Missouri gets its
 isolation from temp directories and `env_clear`, which is cheaper and
-needs no container runtime. For stronger isolation, missouri also runs a
-command inside a nix shell, or inside a Docker container of its own.
+needs no container runtime. Each command gets programs from nixpkgs
+through a `packages` list. With `docker: true`, each command runs inside
+a Docker container.
 
 ## Getting started
 

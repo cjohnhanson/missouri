@@ -49,5 +49,5 @@ Out of scope:
 
 Missouri runs a transition command on the host, as the user who started
 missouri, unless the project config sets `docker: true`. A `packages`
-list puts the command in a nix shell, which supplies programs and does
-not confine them. Neither is a vulnerability.
+list puts programs from nixpkgs on the command's `PATH` without
+confining the command. Neither is a vulnerability.
