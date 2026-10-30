@@ -1,4 +1,5 @@
   getting-started      Create your first state graph test suite
   writing-tests        How to model tests as state graphs with transitions, assertions, and services
-  cli-reference        Complete command reference for the missouri test framework
+  cli-reference        Every command, argument, and flag of the missouri binary, generated from its definition
+  config-format        The missouri.yml fields, comparators, services, ignore file, bin directory, sandbox, and state graph model
   what-is-missouri     Why filesystem state graphs and how missouri's testing model works
