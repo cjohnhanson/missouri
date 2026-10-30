@@ -2911,6 +2911,14 @@ transitions:
     }
 
     #[test]
+    fn a_capture_that_is_not_utf8_is_refused() {
+        assert_eq!(
+            parse_capture(b"PATH=/nix/store/a-jq/bin:/m\0X=\xff\0", "/m"),
+            None
+        );
+    }
+
+    #[test]
     fn a_resolved_backend_runs_sh_with_the_packages_in_front_of_path() {
         let backend = NixBackend {
             nix_bin: Utf8PathBuf::from("/nonexistent/nix"),
