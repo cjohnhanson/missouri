@@ -6,8 +6,6 @@ type: reference
 
 # missouri CLI reference
 
-- **Version:** 0.2.5
-
 Show-me-state: e2e testing as directed graphs of filesystem states
 
 Every command takes `-h` or `--help`. `-V` and `--version` work at the

@@ -48,6 +48,9 @@ fn rendered() -> String {
         .to_string()
         .parse()
         .expect("the usage spec parses back");
+    // No version on the page: `--version` reports it, and a version line
+    // here would fail this test on every release bump.
+    spec.version = None;
     let bin = spec.bin.clone();
     set_clap_usage(&mut spec.cmd, &mut cmd, &bin, true);
     let body = usage::docs::markdown::MarkdownRenderer::new(spec)
