@@ -1,6 +1,6 @@
 [package]
 name = "missouri"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 # 1.88, read from the dependency graph rather than from the edition.
 # Edition 2024 needs 1.85, and a locked dependency here asks for 1.88.
@@ -111,6 +111,13 @@ too_many_arguments = "allow"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+# Renders docs/cli-reference.md from the clap definition, in a test that
+# fails when the committed page differs. A test-only dependency: the
+# shipped crate and its consumers never compile it.
+usage-lib = { version = "7", default-features = false, features = ["clap", "markdown"] }
+
+[[test]]
+name = "cli_reference"
 
 # A released binary carries no debug symbols, and a user installing a
 # CLI never reads them. Thin LTO with one codegen unit trades build

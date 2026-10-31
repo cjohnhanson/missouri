@@ -5,11 +5,19 @@ use camino::{Utf8Path, Utf8PathBuf};
 use clap::Parser;
 use miette::IntoDiagnostic;
 
+/// The long description, which `--help` and the generated reference
+/// print. It carries the facts clap's built-in flags cannot.
+const LONG_ABOUT: &str = "Show-me-state: e2e testing as directed graphs of filesystem states
+
+Every command takes `-h` or `--help`. `-V` and `--version` work at the
+top level only, as `missouri --version`; a subcommand refuses them.";
+
 #[derive(Parser)]
 #[command(
     name = "missouri",
     version,
     about = "Show-me-state: e2e testing as directed graphs of filesystem states",
+    long_about = LONG_ABOUT,
     max_term_width = 98
 )]
 pub struct Args {
@@ -28,6 +36,11 @@ pub struct Args {
 #[derive(Parser)]
 pub enum Command {
     /// Run all test paths
+    ///
+    /// Run all test paths discovered in the state graph.
+    ///
+    /// Exit codes: `0` every path passed. `1` one path or more failed. `2`
+    /// configuration error. `130` interrupted.
     Run(RunArgs),
 
     /// Write the man pages into a directory (the package build uses this)
@@ -45,12 +58,36 @@ pub enum Command {
     },
 
     /// List states, transitions, or test paths
+    ///
+    /// List states, transitions, or test paths in the state graph.
+    ///
+    /// `list` refuses a directory that holds no state, and names the
+    /// directory. The refusal names `missouri state add`, and names
+    /// `missouri init` for the case where no project exists yet.
+    ///
+    /// Workspace mode refuses each member the same way, and names the
+    /// member. Where a `members` entry names no directory at all, `list`,
+    /// `validate` and `run` all name that entry and the key that declared
+    /// it.
+    ///
+    /// `list` also refuses `paths` and `graph` on a graph with no root
+    /// state, because there is nothing to walk. A root state is one with no
+    /// inbound transition. `states` and `transitions` still print for such
+    /// a graph, since that listing is how a reader finds the loop.
     List(ListArgs),
 
     /// Validate missouri.yml files without running
+    ///
+    /// Validate the `missouri.yml` files. This command runs nothing else.
+    /// It checks that every config parses, that every transition target
+    /// resolves to a real state, and that at least one root state exists.
+    ///
+    /// Prints a summary: `valid: N state(s), N transition(s), N root(s)`.
     Validate(ValidateArgs),
 
     /// Initialize a new missouri project
+    ///
+    /// This command creates the config directory structure.
     Init(InitArgs),
 
     /// Manage states
@@ -60,12 +97,25 @@ pub enum Command {
     Report(ReportArgs),
 
     /// Serve an HTML report locally (not implemented yet)
+    ///
+    /// Not implemented yet. The command checks that a recorded run exists,
+    /// prints a message on stderr, and exits 1. To read a report, run
+    /// `missouri report --format html` and open the file it writes.
     Serve(ServeArgs),
 
     /// Browse bundled documentation
+    ///
+    /// Print a page of this documentation. Missouri compiles the pages into
+    /// the binary, so the command works from any directory.
+    ///
+    /// Omit `[TOPIC]` to list the topics.
     Docs(DocsArgs),
 
     /// Generate documentation from test suites
+    ///
+    /// Render one test path as a document. The output interleaves the state
+    /// prose from each `doc:` field, the file tree of each state, the
+    /// transition command, and the expected stdout.
     #[command(name = "docgen")]
     Doc(DocArgs),
 
@@ -109,6 +159,8 @@ pub struct RunArgs {
     pub dir: Utf8PathBuf,
 
     /// Increase verbosity (-v, -vv, -vvv)
+    ///
+    /// Stackable: `-v`, `-vv`, `-vvv`.
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
@@ -121,18 +173,30 @@ pub struct RunArgs {
     pub keep_temp: bool,
 
     /// Run only state assertions (skip transitions and filesystem comparison)
+    ///
+    /// Run the state assertions only. Skip the transitions and the
+    /// filesystem comparison. Conflicts with `--no-check` and `--record`.
     #[arg(long, conflicts_with_all = ["no_check", "record"])]
     pub check_only: bool,
 
     /// Skip all assertions (run only transitions and filesystem comparison)
+    ///
+    /// Skip all assertions. Run the transitions and the filesystem
+    /// comparison only. Conflicts with `--check-only`.
     #[arg(long, conflicts_with = "check_only")]
     pub no_check: bool,
 
     /// Record transition output to asciicast files
+    ///
+    /// Record the transition output to asciicast (`.cast`) files. Conflicts
+    /// with `--check-only`.
     #[arg(long, conflicts_with = "check_only")]
     pub record: bool,
 
     /// Custom run ID for recording output directory (default: timestamp)
+    ///
+    /// Set a custom run ID for the recording output directory. Default: a
+    /// timestamp (`YYYY-MM-DDTHH-MM-SS`). Requires `--record`.
     #[arg(long, requires = "record")]
     pub run_id: Option<String>,
 }
@@ -144,6 +208,14 @@ pub struct ListArgs {
     pub dir: Utf8PathBuf,
 
     /// What to list
+    ///
+    /// `states`: print all discovered states.
+    ///
+    /// `transitions`: print all discovered transitions.
+    ///
+    /// `paths`: print all enumerated test paths (root-to-leaf walks).
+    ///
+    /// `graph`: same as `paths`.
     #[arg(long, default_value = "paths")]
     pub show: ListKind,
 }
@@ -184,14 +256,15 @@ pub enum StateCommand {
 
 #[derive(Parser)]
 pub struct StateAddArgs {
-    /// Name of the new state
+    /// Name of the new state (becomes the directory name)
     pub name: String,
 
     /// Root directory containing states
     #[arg(short, long, default_value = ".")]
     pub dir: Utf8PathBuf,
 
-    /// Copy from an existing state and create a placeholder transition
+    /// Copy from an existing state and create a placeholder transition from
+    /// it to the new state
     #[arg(long)]
     pub from: Option<String>,
 }
@@ -203,6 +276,12 @@ pub struct ReportArgs {
     pub dir: Utf8PathBuf,
 
     /// Report format
+    ///
+    /// `terminal`: print to stdout.
+    ///
+    /// `html`: write `report.html` to the run directory.
+    ///
+    /// `md`: write `report.md` to the run directory.
     #[arg(long, default_value = "terminal")]
     pub format: ReportFormat,
 
@@ -225,6 +304,8 @@ pub struct ServeArgs {
     pub dir: Utf8PathBuf,
 
     /// Specific run ID to serve (default: latest)
+    ///
+    /// The run to check for. Default: latest.
     #[arg(long)]
     pub run: Option<String>,
 
@@ -242,18 +323,32 @@ pub struct AgentArgs {
 #[derive(Parser)]
 pub enum AgentCommand {
     /// Run an agent evaluation
+    ///
+    /// Run an agent evaluation. This command reads `<config_dir>/<name>.md`.
+    /// It parses the YAML frontmatter as the agent configuration. It then
+    /// starts a Claude agent and passes the markdown body as the evaluation
+    /// prompt. The agent returns a verdict. To do so, it calls `missouri
+    /// agent pass` or `missouri agent fail <details>`.
+    ///
+    /// Exit codes: `0` pass, `1` fail or no verdict.
     Eval(AgentEvalArgs),
 
     /// Record a passing verdict (called by the agent)
+    ///
+    /// Record a passing verdict. The evaluation agent calls this command
+    /// during an eval. Do not call it directly.
     Pass,
 
     /// Record a failing verdict (called by the agent)
+    ///
+    /// Record a failing verdict with details. The evaluation agent calls
+    /// this command.
     Fail(AgentFailArgs),
 }
 
 #[derive(Parser)]
 pub struct AgentEvalArgs {
-    /// Name of the eval (matches .missouri/<name>.md)
+    /// Eval name (matches `<config_dir>/<name>.md`)
     pub name: String,
 
     /// Root directory containing the state

@@ -125,7 +125,8 @@ missouri docs [topic]      # bundled documentation
 - [What is Missouri?](docs/what-is-missouri.md). The testing model, why graphs, and how a path runs.
 - [Getting Started](docs/getting-started.md). A walkthrough of a first test suite.
 - [Writing Tests](docs/writing-tests.md). Transitions, assertions, comparators, and services.
-- [CLI Reference](docs/cli-reference.md). Every command and every config field.
+- [CLI Reference](docs/cli-reference.md). Every command and flag.
+- [Configuration format](docs/config-format.md). Every config field.
 
 ## Related
 

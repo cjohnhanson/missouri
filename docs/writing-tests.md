@@ -1,10 +1,10 @@
 <!-- metadata
-title: "Writing Missouri Tests"
+title: "How to write missouri tests as state graphs"
 description: "How to model tests as state graphs with transitions, assertions, and services"
 type: guide
 -->
 
-# Writing Missouri Tests
+# How to write missouri tests as state graphs
 
 A state is a directory. A transition is a shell command. Missouri copies
 a state to a temp directory, runs the transition command, and diffs the
@@ -832,5 +832,6 @@ assertions:
 ## Further reading
 
 - [What is Missouri?](what-is-missouri.md). How a state graph works, why missouri uses `env_clear`, and the comparison rules.
-- [CLI Reference](cli-reference.md). The full command and config schema reference.
+- [CLI Reference](cli-reference.md). The full command reference.
+- [Configuration format](config-format.md). The full config schema reference.
 - [Getting Started](getting-started.md). Build your first test suite step by step.
