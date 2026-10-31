@@ -6,7 +6,7 @@ type: reference
 
 # missouri CLI reference
 
-- **Version:** 0.2.4
+- **Version:** 0.2.5
 
 Show-me-state: e2e testing as directed graphs of filesystem states
 
