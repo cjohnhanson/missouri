@@ -13,8 +13,7 @@ Show-me-state: e2e testing as directed graphs of filesystem states
 Every command takes `-h` or `--help`. `-V` and `--version` work at the
 top level only, as `missouri --version`; a subcommand refuses them.
 
-
-- **Usage:** `missouri [-C <DIRECTORY>] [--config-dir <CONFIG_DIR>] <SUBCOMMAND>`
+- **Usage:** `missouri [OPTIONS] <COMMAND>`
 
 ## Global Flags
 
@@ -28,9 +27,19 @@ Name of the config directory (default: .missouri)
 
 **Default:** `.missouri`
 
+## Flags
+
+### `-h --help`
+
+Print help (see a summary with '-h')
+
+### `-V --version`
+
+Print version
+
 ## `missouri run`
 
-- **Usage:** `missouri run [FLAGS]`
+- **Usage:** `missouri run [OPTIONS]`
 
 Run all test paths
 
@@ -46,19 +55,35 @@ Root directory containing states
 
 **Default:** `.`
 
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
 #### `-v --verbose`
 
 Increase verbosity (-v, -vv, -vvv)
 
 Stackable: `-v`, `-vv`, `-vvv`.
 
+**Default:** `0`
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
 #### `-q --quiet`
 
 Suppress non-essential output
 
+**Default:** `false`
+
 #### `--keep-temp`
 
 Keep temp directories after run (for debugging)
+
+**Default:** `false`
 
 #### `--check-only`
 
@@ -66,11 +91,15 @@ Run only state assertions (skip transitions and filesystem comparison)
 
 Run the state assertions only. Skip the transitions and the filesystem comparison. Conflicts with `--no-check` and `--record`.
 
+**Default:** `false`
+
 #### `--no-check`
 
 Skip all assertions (run only transitions and filesystem comparison)
 
 Skip all assertions. Run the transitions and the filesystem comparison only. Conflicts with `--check-only`.
+
+**Default:** `false`
 
 #### `--record`
 
@@ -78,15 +107,21 @@ Record transition output to asciicast files
 
 Record the transition output to asciicast (`.cast`) files. Conflicts with `--check-only`.
 
+**Default:** `false`
+
 #### `--run-id <RUN_ID>`
 
 Custom run ID for recording output directory (default: timestamp)
 
 Set a custom run ID for the recording output directory. Default: a timestamp (`YYYY-MM-DDTHH-MM-SS`). Requires `--record`.
 
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri list`
 
-- **Usage:** `missouri list [-d --dir <DIR>] [--show <SHOW>]`
+- **Usage:** `missouri list [OPTIONS]`
 
 List states, transitions, or test paths
 
@@ -105,6 +140,10 @@ Workspace mode refuses each member the same way, and names the member. Where a `
 Root directory containing states
 
 **Default:** `.`
+
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
 
 #### `--show <SHOW>`
 
@@ -127,9 +166,19 @@ What to list
 
 **Default:** `paths`
 
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri validate`
 
-- **Usage:** `missouri validate [-d --dir <DIR>]`
+- **Usage:** `missouri validate [OPTIONS]`
 
 Validate missouri.yml files without running
 
@@ -145,9 +194,23 @@ Root directory containing states
 
 **Default:** `.`
 
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri init`
 
-- **Usage:** `missouri init [-d --dir <DIR>]`
+- **Usage:** `missouri init [OPTIONS]`
 
 Initialize a new missouri project
 
@@ -161,15 +224,47 @@ Root directory for the project
 
 **Default:** `.`
 
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri state`
 
-- **Usage:** `missouri state <SUBCOMMAND>`
+- **Usage:** `missouri state [OPTIONS] <COMMAND>`
 
 Manage states
 
+### Global Flags
+
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+### Flags
+
+#### `-h --help`
+
+Print help
+
 ## `missouri state add`
 
-- **Usage:** `missouri state add [-d --dir <DIR>] [--from <FROM>] <NAME>`
+- **Usage:** `missouri state add [OPTIONS] <NAME>`
 
 Add a new state
 
@@ -187,13 +282,45 @@ Root directory containing states
 
 **Default:** `.`
 
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
 #### `--from <FROM>`
 
 Copy from an existing state and create a placeholder transition from it to the new state
 
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+#### `-h --help`
+
+Print help
+
+## `missouri state help`
+
+- **Usage:** `missouri state help [COMMAND]`
+
+Print this message or the help of the given subcommand(s)
+
+## `missouri state help add`
+
+- **Usage:** `missouri state help add`
+
+Add a new state
+
+## `missouri state help help`
+
+- **Usage:** `missouri state help help`
+
+Print this message or the help of the given subcommand(s)
+
 ## `missouri report`
 
-- **Usage:** `missouri report [FLAGS]`
+- **Usage:** `missouri report [OPTIONS]`
 
 Generate a report from recorded runs
 
@@ -204,6 +331,10 @@ Generate a report from recorded runs
 Root directory containing states
 
 **Default:** `.`
+
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
 
 #### `--format <FORMAT>`
 
@@ -223,13 +354,23 @@ Report format
 
 **Default:** `terminal`
 
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
 #### `--run <RUN>`
 
 Specific run ID to report on (default: latest)
 
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri serve`
 
-- **Usage:** `missouri serve [FLAGS]`
+- **Usage:** `missouri serve [OPTIONS]`
 
 Serve an HTML report locally (not implemented yet)
 
@@ -243,11 +384,21 @@ Root directory containing states
 
 **Default:** `.`
 
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
 #### `--run <RUN>`
 
 Specific run ID to serve (default: latest)
 
 The run to check for. Default: latest.
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
 
 #### `--port <PORT>`
 
@@ -255,9 +406,13 @@ Accepted and unused until serve exists
 
 **Default:** `8080`
 
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri docs`
 
-- **Usage:** `missouri docs [-a --all] [TOPIC] [QUERY]`
+- **Usage:** `missouri docs [OPTIONS] [TOPIC] [QUERY]`
 
 Browse bundled documentation
 
@@ -281,9 +436,25 @@ Search query (when topic is "search")
 
 Print every page whole, in one stream
 
+**Default:** `false`
+
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri docgen`
 
-- **Usage:** `missouri docgen [FLAGS]`
+- **Usage:** `missouri docgen [OPTIONS]`
 
 Generate documentation from test suites
 
@@ -297,6 +468,10 @@ Root directory containing states
 
 **Default:** `.`
 
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
 #### `--format <FORMAT>`
 
 Output format
@@ -308,21 +483,49 @@ Output format
 
 **Default:** `markdown`
 
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
 #### `--path <PATH>`
 
 Path index to render (1-based, default: 1)
 
 **Default:** `1`
 
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri agent`
 
-- **Usage:** `missouri agent <SUBCOMMAND>`
+- **Usage:** `missouri agent [OPTIONS] <COMMAND>`
 
 Agent evaluation commands
 
+### Global Flags
+
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+### Flags
+
+#### `-h --help`
+
+Print help
+
 ## `missouri agent eval`
 
-- **Usage:** `missouri agent eval [-d --dir <DIR>] <NAME>`
+- **Usage:** `missouri agent eval [OPTIONS] <NAME>`
 
 Run an agent evaluation
 
@@ -344,17 +547,47 @@ Root directory containing the state
 
 **Default:** `.`
 
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri agent pass`
 
-- **Usage:** `missouri agent pass`
+- **Usage:** `missouri agent pass [OPTIONS]`
 
 Record a passing verdict (called by the agent)
 
 Record a passing verdict. The evaluation agent calls this command during an eval. Do not call it directly.
 
+### Flags
+
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
 ## `missouri agent fail`
 
-- **Usage:** `missouri agent fail [DETAILS]…`
+- **Usage:** `missouri agent fail [OPTIONS] [DETAILS]...`
 
 Record a failing verdict (called by the agent)
 
@@ -365,3 +598,145 @@ Record a failing verdict with details. The evaluation agent calls this command.
 #### `[DETAILS]…`
 
 Failure details
+
+### Flags
+
+#### `-C <DIRECTORY>`
+
+Change to this directory before doing anything
+
+#### `--config-dir <CONFIG_DIR>`
+
+Name of the config directory (default: .missouri)
+
+**Default:** `.missouri`
+
+#### `-h --help`
+
+Print help (see a summary with '-h')
+
+## `missouri agent help`
+
+- **Usage:** `missouri agent help [COMMAND]`
+
+Print this message or the help of the given subcommand(s)
+
+## `missouri agent help eval`
+
+- **Usage:** `missouri agent help eval`
+
+Run an agent evaluation
+
+## `missouri agent help pass`
+
+- **Usage:** `missouri agent help pass`
+
+Record a passing verdict (called by the agent)
+
+## `missouri agent help fail`
+
+- **Usage:** `missouri agent help fail`
+
+Record a failing verdict (called by the agent)
+
+## `missouri agent help help`
+
+- **Usage:** `missouri agent help help`
+
+Print this message or the help of the given subcommand(s)
+
+## `missouri help`
+
+- **Usage:** `missouri help [COMMAND]`
+
+Print this message or the help of the given subcommand(s)
+
+## `missouri help run`
+
+- **Usage:** `missouri help run`
+
+Run all test paths
+
+## `missouri help list`
+
+- **Usage:** `missouri help list`
+
+List states, transitions, or test paths
+
+## `missouri help validate`
+
+- **Usage:** `missouri help validate`
+
+Validate missouri.yml files without running
+
+## `missouri help init`
+
+- **Usage:** `missouri help init`
+
+Initialize a new missouri project
+
+## `missouri help state`
+
+- **Usage:** `missouri help state [COMMAND]`
+
+Manage states
+
+## `missouri help state add`
+
+- **Usage:** `missouri help state add`
+
+Add a new state
+
+## `missouri help report`
+
+- **Usage:** `missouri help report`
+
+Generate a report from recorded runs
+
+## `missouri help serve`
+
+- **Usage:** `missouri help serve`
+
+Serve an HTML report locally (not implemented yet)
+
+## `missouri help docs`
+
+- **Usage:** `missouri help docs`
+
+Browse bundled documentation
+
+## `missouri help docgen`
+
+- **Usage:** `missouri help docgen`
+
+Generate documentation from test suites
+
+## `missouri help agent`
+
+- **Usage:** `missouri help agent [COMMAND]`
+
+Agent evaluation commands
+
+## `missouri help agent eval`
+
+- **Usage:** `missouri help agent eval`
+
+Run an agent evaluation
+
+## `missouri help agent pass`
+
+- **Usage:** `missouri help agent pass`
+
+Record a passing verdict (called by the agent)
+
+## `missouri help agent fail`
+
+- **Usage:** `missouri help agent fail`
+
+Record a failing verdict (called by the agent)
+
+## `missouri help help`
+
+- **Usage:** `missouri help help`
+
+Print this message or the help of the given subcommand(s)

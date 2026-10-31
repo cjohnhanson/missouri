@@ -17,25 +17,53 @@ type: reference
 # missouri CLI reference
 ";
 
+/// Each command's usage line as clap prints it in `--help`, so the page
+/// and the help agree on what is required.
+///
+/// Two things clap adds to every command are left off the page, where
+/// they would repeat under each heading: the `help` subcommand, and the
+/// global options, which the page lists once at the top.
+fn set_clap_usage(spec: &mut usage::SpecCommand, cmd: &mut clap::Command, bin: &str, root: bool) {
+    let usage = cmd.render_usage().to_string();
+    let usage = usage.trim_start_matches("Usage:").trim();
+    spec.usage = usage.strip_prefix(bin).unwrap_or(usage).trim().to_string();
+    if !root {
+        spec.flags.retain(|f| !f.global);
+    }
+    spec.subcommands.shift_remove("help");
+    for (name, child) in spec.subcommands.iter_mut() {
+        if let Some(sub) = cmd.find_subcommand_mut(name) {
+            set_clap_usage(child, sub, bin, false);
+        }
+    }
+}
+
 fn rendered() -> String {
+    let mut cmd = missouri::cli::Args::command();
+    cmd.build();
     // Through the KDL text and back, as `usage generate md` reads a spec.
     // The direct conversion in usage-lib 7.1 leaves each positional
     // argument's usage string empty, and the page then names no argument.
-    let spec: usage::Spec = usage::Spec::from(missouri::cli::Args::command())
+    let mut spec: usage::Spec = usage::Spec::from(cmd.clone())
         .to_string()
         .parse()
         .expect("the usage spec parses back");
+    let bin = spec.bin.clone();
+    set_clap_usage(&mut spec.cmd, &mut cmd, &bin, true);
     let body = usage::docs::markdown::MarkdownRenderer::new(spec)
         .with_theme(usage::docs::markdown::MarkdownTheme::Detailed)
         .render_spec()
         .expect("render the usage spec");
     // The renderer opens with its own marker comment and an H1 naming
     // the binary. The page's H1 comes from HEADER instead.
-    let body = body
+    let mut body = body
         .lines()
         .skip_while(|l| l.starts_with("<!--") || l.starts_with("# ") || l.trim().is_empty())
         .collect::<Vec<_>>()
         .join("\n");
+    while body.contains("\n\n\n") {
+        body = body.replace("\n\n\n", "\n\n");
+    }
     format!("{HEADER}\n{}\n", body.trim_end())
 }
 
