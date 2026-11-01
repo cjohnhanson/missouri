@@ -1427,3 +1427,100 @@ fn workspace_validate_checks_all_members() {
         .stdout(predicate::str::contains("sub-a"))
         .stdout(predicate::str::contains("sub-b"));
 }
+
+// A retained directory must survive the entire process, on both passing and
+// failing runs. Checking only during execution misses TempDir's scope cleanup.
+#[test]
+fn keep_temp_preserves_transition_results_and_reports_the_path() {
+    for pass in [true, false] {
+        for keep in [true, false] {
+            let suite = tmpdir();
+            let observed = suite.path().join("observed-path");
+            let before = suite.path().join("before/.missouri");
+            let after = suite.path().join("after/.missouri");
+            fs::create_dir_all(&before).unwrap();
+            fs::create_dir_all(&after).unwrap();
+            fs::write(
+                before.join("missouri.yml"),
+                format!("env:\n  OBSERVED_PATH: {}\ntransitions:\n  - command: 'printf %s \"$PWD\" > \"$OBSERVED_PATH\"; printf actual > output.txt'\n    target: ../after\n", observed.display()),
+            )
+            .unwrap();
+            fs::write(after.join("missouri.yml"), "{}\n").unwrap();
+            fs::write(
+                suite.path().join("after/output.txt"),
+                if pass { "actual" } else { "expected" },
+            )
+            .unwrap();
+            let mut cmd = missouri();
+            cmd.args(["run", "-d"]).arg(suite.path());
+            if keep {
+                cmd.arg("--keep-temp");
+            }
+            let output = cmd.output().unwrap();
+            assert_eq!(output.status.success(), pass);
+            let path = fs::read_to_string(&observed).unwrap();
+            assert_eq!(Path::new(&path).exists(), keep, "{path}");
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            if keep {
+                let reported = stderr
+                    .lines()
+                    .find_map(|line| line.strip_prefix("missouri: kept temporary directory: "))
+                    .expect("retained directory is reported");
+                assert_eq!(
+                    fs::canonicalize(reported).unwrap(),
+                    fs::canonicalize(&path).unwrap()
+                );
+                assert_eq!(
+                    fs::read_to_string(Path::new(&path).join("output.txt")).unwrap(),
+                    "actual"
+                );
+                fs::remove_dir_all(path).unwrap();
+            } else {
+                assert!(!stderr.contains("kept temporary directory:"));
+            }
+        }
+    }
+}
+
+#[test]
+fn keep_temp_preserves_assertion_only_state_after_process_exit() {
+    for pass in [true, false] {
+        let suite = tmpdir();
+        let observed = suite.path().join("observed-path");
+        let state = suite.path().join("state/.missouri");
+        fs::create_dir_all(&state).unwrap();
+        fs::create_dir_all(suite.path().join("after/.missouri")).unwrap();
+        fs::write(suite.path().join("after/.missouri/missouri.yml"), "{}\n").unwrap();
+        fs::write(
+            state.join("missouri.yml"),
+            format!(
+                "transitions:\n  - command: 'true'\n    target: ../after\nenv:\n  OBSERVED_PATH: {}\nassertions:\n  - command: 'printf %s \"$PWD\" > \"$OBSERVED_PATH\"; exit {}'\n",
+                observed.display(),
+                if pass { 0 } else { 1 }
+            ),
+        )
+        .unwrap();
+        fs::write(suite.path().join("state/evidence.txt"), "fixture evidence").unwrap();
+        let output = missouri()
+            .args(["run", "--check-only", "--keep-temp", "-d"])
+            .arg(suite.path())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.success(), pass);
+        let path = fs::read_to_string(observed).unwrap();
+        assert_eq!(
+            fs::read_to_string(Path::new(&path).join("evidence.txt")).unwrap(),
+            "fixture evidence"
+        );
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        let reported = stderr
+            .lines()
+            .find_map(|line| line.strip_prefix("missouri: kept temporary directory: "))
+            .expect("retained directory is reported");
+        assert_eq!(
+            fs::canonicalize(reported).unwrap(),
+            fs::canonicalize(&path).unwrap()
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+}

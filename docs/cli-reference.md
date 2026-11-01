@@ -69,7 +69,7 @@ Suppress non-essential output
 
 #### `--keep-temp`
 
-Keep temp directories after run (for debugging)
+Keep temp directories after run and print their paths to stderr
 
 **Default:** `false`
 

@@ -421,6 +421,12 @@ deterministic command checks poorly. Set an `agent:` field instead of a
 `command:` field. The `agent:` field names a markdown eval file in the
 config directory.
 
+In release 0.2.5, the evaluation runner invokes the `claude` executable.
+It requires Claude Code and its own configured access. It is not a
+host-independent adapter, and it does not use a running Codex session.
+An agent evaluation can incur model charges. Deterministic command
+assertions and filesystem comparisons do not invoke a model.
+
 ```yaml
 assertions:
   - agent: eval-skill-commands
@@ -482,7 +488,14 @@ Use an agent assertion for a property that needs judgment:
 
 Use a command assertion for a deterministic check, such as a file that
 must exist, output that must match, or an exit code. A command assertion
-costs nothing to run and returns the same answer every time.
+runs the command you supply. Its repeatability depends on that command's
+inputs and environment; network calls or clock-dependent output can
+still vary. Use local, controlled inputs for deterministic checks.
+
+An agent verdict can vary even when the files do not change. Keep exact
+exit-code, schema, and content checks as command assertions. Add agent
+judgment only for criteria that need it, and inspect the verdict's
+evidence before accepting it.
 
 ## Custom comparators
 
@@ -684,8 +697,8 @@ missouri run -d tests/missouri
 # Verbose output. Show the passing steps too.
 missouri run -d tests/missouri -v
 
-# Keep the temp directories for debugging
-missouri run -d tests/missouri --keep-temp
+# Inspect the command output and mismatch details
+missouri run -d tests/missouri -vv
 
 # Run the assertions only. Skip the transitions and the filesystem comparison.
 missouri run -d tests/missouri --check-only
@@ -715,9 +728,11 @@ With `-v`, missouri shows the passing steps as well as the failures. It
 prints all assertion output, the command stdout and stderr, and the
 comparison details.
 
-With `--keep-temp`, missouri keeps the temp directories where the
-transitions ran instead of deleting them. It prints the paths in the
-output. Read them to see what the command produced.
+Release 0.2.5 has a `--keep-temp` defect: the directories are removed at
+scope exit and their paths are not printed. The unreleased fix retains
+them and prints `missouri: kept temporary directory: <path>` on stderr.
+Until you use a binary containing that fix, follow the manual-copy
+workflow in [How to diagnose a failing test](how-to-diagnose-failures.md).
 
 List the paths before a run to understand the graph:
 

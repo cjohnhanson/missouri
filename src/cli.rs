@@ -168,7 +168,7 @@ pub struct RunArgs {
     #[arg(short, long)]
     pub quiet: bool,
 
-    /// Keep temp directories after run (for debugging)
+    /// Keep temp directories after run and print their paths to stderr
     #[arg(long)]
     pub keep_temp: bool,
 
