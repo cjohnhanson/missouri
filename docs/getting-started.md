@@ -223,6 +223,8 @@ A filesystem mismatch works the same way. Missouri reports the diff when the com
 
 ## Next steps
 
+- [Test your project's local build](how-to-test-a-local-build.md) so the
+  suite runs the current binary from your existing repository.
 - Add more states and chain the transitions into multi-step paths. Missouri finds every root-to-leaf path for you.
 - Add `comparators` to a transition to skip a volatile file or to run a custom diff command. Read the [configuration format](config-format.md) for the full `missouri.yml` schema.
 - Add `env` to a state or to the project config to set environment variables.

@@ -18,6 +18,10 @@ A state can also carry assertions. An assertion is a command that
 verifies a property that the filesystem snapshot does not hold, such as
 an exit code or the exact stdout.
 
+To add a suite to an existing project, start with
+[testing a local build](how-to-test-a-local-build.md). It connects the
+project's build output to the commands in the suite.
+
 ## Directory structure
 
 ```
@@ -331,8 +335,10 @@ both fields.
 ## Writing assertions
 
 An assertion is a command attached to a state. It verifies a property that
-the filesystem snapshot does not hold. It runs against a copy of the
-state's fixture in a temp directory.
+the filesystem snapshot does not hold. In a full run, source assertions
+inspect the starting copy before the first transition. Target assertions
+inspect the actual result after each transition. With `--check-only`,
+assertions inspect fresh copies of the saved state fixtures instead.
 
 ```yaml
 assertions:
@@ -369,9 +375,10 @@ Use an assertion to test a property of a state in place, such as a
 command exit code, the stdout content, or behavior that depends on
 runtime state such as a git branch.
 
-A state can hold both transitions and assertions. An assertion runs
-against the state fixture. A transition runs against the fixture and then
-diffs the result.
+A state can hold both transitions and assertions. In a full run, the
+transition changes the working directory, the diff compares it with the
+target fixture, and the target assertions inspect that working directory.
+Keep assertions read-only so they do not change the input to a later step.
 
 ### Expecting failure
 
@@ -401,18 +408,13 @@ assertions:
     command: "grep -q 'status: done' .my-tool/default/fix-the-widget.md"
 ```
 
-A root state can also hold assertions only. Add `entrypoint: true` to
-verify a pre-built snapshot:
-
-```yaml
-entrypoint: true
-
-assertions:
-  - name: ".my-tool directory exists"
-    command: "test -d .my-tool"
-  - name: "settings.local.json is valid JSON"
-    command: "jq empty .claude/settings.local.json"
-```
+An assertion state must belong to an enumerated test path. In release
+0.2.5, a graph with no transitions reports `no test paths found` and exits
+successfully without running assertions, even with `--check-only`.
+`entrypoint: true` alone does not make a standalone assertion state run.
+Connect it to another state with a transition, then use `missouri list`
+to confirm that the path exists. A full run checks actual command results;
+`--check-only` checks fixture copies along those paths.
 
 ## Agent assertions
 
@@ -746,8 +748,7 @@ missouri list --show transitions -d tests/missouri
 
 ### Pattern: build-then-test with setup
 
-Build the binary under test in the setup phase. The binary on PATH then
-matches the current source:
+Build the binary under test in the setup phase:
 
 ```yaml
 # .missouri/missouri.yml
@@ -758,6 +759,10 @@ packages:
   - git
   - jq
 ```
+
+Building alone does not put `target/debug/my-tool` on the test PATH.
+Add an executable wrapper in `.missouri/bin/` that runs that exact binary,
+as shown in [testing a local build](how-to-test-a-local-build.md).
 
 ### Pattern: ignore non-deterministic paths per transition
 
@@ -796,7 +801,8 @@ jq empty "$1" || { echo "FAIL: not valid JSON"; exit 1; }
 jq -e '.hooks' "$1" >/dev/null || { echo "FAIL: missing hooks"; exit 1; }
 ```
 
-Then name the script in the config. It is on PATH:
+Make the script executable with `chmod +x .missouri/bin/validate-settings`.
+Then name it in the config. The bin directory is on the test PATH:
 
 ```yaml
 comparators:

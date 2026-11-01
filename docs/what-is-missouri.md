@@ -159,8 +159,12 @@ exit code decides whether it passes. An assertion can also declare an
 expected `stdout` and `stderr` for an exact match. Set `should_fail: true`
 to require a non-zero exit code.
 
-An assertion runs *inside* a temp copy of the state, so it cannot change
-the fixture. Use an assertion to verify a computed property. For example:
+In a full run, assertions inspect the working directory before the first
+transition and after each transition. They therefore check actual command
+results. With `--check-only`, they inspect copies of the saved fixtures.
+Keep assertions read-only: they cannot change the fixture, but a mutation
+during a full run can affect the next transition. Use an assertion to
+verify a computed property. For example:
 does `jq` parse this file, does this command print the expected output, or
 does this config file hold the right key.
 
