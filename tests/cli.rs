@@ -1482,6 +1482,85 @@ fn keep_temp_preserves_transition_results_and_reports_the_path() {
     }
 }
 
+/// A suite of one state marked `entrypoint: true`, holding one assertion.
+fn snapshot_suite(assertion: &str) -> tempfile::TempDir {
+    let suite = tmpdir();
+    let state = suite.path().join("snapshot/.missouri");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(
+        state.join("missouri.yml"),
+        format!(
+            "entrypoint: true\nassertions:\n  - name: snapshot check\n    command: '{assertion}'\n"
+        ),
+    )
+    .unwrap();
+    fs::write(suite.path().join("snapshot/evidence.txt"), "held\n").unwrap();
+    suite
+}
+
+#[test]
+fn a_failing_assertion_on_a_lone_entrypoint_fails_the_run() {
+    for flags in [&["run"][..], &["run", "--check-only"][..]] {
+        let suite = snapshot_suite("false");
+        missouri()
+            .args(flags)
+            .arg("-d")
+            .arg(suite.path())
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("1 failed"));
+    }
+}
+
+#[test]
+fn a_passing_assertion_on_a_lone_entrypoint_reads_the_fixture_and_passes() {
+    for flags in [&["run"][..], &["run", "--check-only"][..]] {
+        let suite = snapshot_suite("grep -q held evidence.txt");
+        missouri()
+            .args(flags)
+            .arg("-d")
+            .arg(suite.path())
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("1 passed, 0 failed"));
+    }
+}
+
+#[test]
+fn no_check_skips_the_assertion_on_a_lone_entrypoint() {
+    let suite = snapshot_suite("false");
+    missouri()
+        .args(["run", "--no-check", "-d"])
+        .arg(suite.path())
+        .assert()
+        .success();
+}
+
+#[test]
+fn a_lone_entrypoint_with_assertions_is_a_listed_path() {
+    let suite = snapshot_suite("true");
+    missouri()
+        .args(["list", "--show", "paths", "-d"])
+        .arg(suite.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("snapshot"));
+}
+
+#[test]
+fn a_lone_entrypoint_without_assertions_stays_outside_the_paths() {
+    let suite = tmpdir();
+    let state = suite.path().join("empty/.missouri");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("missouri.yml"), "entrypoint: true\n").unwrap();
+    missouri()
+        .args(["run", "-d"])
+        .arg(suite.path())
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("no test paths found"));
+}
+
 #[test]
 fn keep_temp_preserves_assertion_only_state_after_process_exit() {
     for pass in [true, false] {

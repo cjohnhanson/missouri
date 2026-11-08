@@ -76,6 +76,20 @@ pub fn enumerate_subgraph_paths(graph: &StateGraph) -> Vec<TestPath> {
 
     // Enumerate from each entrypoint, stopping at other entrypoints.
     for &ep in &entrypoints {
+        // An entrypoint with assertions and no edges verifies a snapshot.
+        // No walk reaches it, so it is a path of its own. Without this
+        // path its assertions never run and the suite reports success.
+        if graph.outgoing(ep).is_empty()
+            && roots.contains(&ep)
+            && !graph.assertions_for(ep).is_empty()
+        {
+            all_paths.push(TestPath {
+                start: ep,
+                steps: Vec::new(),
+            });
+            continue;
+        }
+
         let mut visited = HashSet::new();
         visited.insert(ep);
         let mut current_path = Vec::new();

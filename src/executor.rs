@@ -1518,8 +1518,14 @@ fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions, path_idx: us
     let path_display = path.display(graph);
     let start = Instant::now();
 
+    // A path with no steps is one snapshot state. It has no transition to
+    // execute, so a full run checks its assertions the way a check-only
+    // run does.
+    let check_snapshot = path.steps.is_empty() && opts.check_mode == CheckMode::Full;
+
     let mut result = match opts.check_mode {
         CheckMode::CheckOnly => run_path_check_only(graph, path, path_display, opts),
+        CheckMode::Full if check_snapshot => run_path_check_only(graph, path, path_display, opts),
         CheckMode::Full | CheckMode::NoCheck => {
             run_path_transitions(graph, path, path_display, opts, path_idx)
         }
@@ -1539,10 +1545,7 @@ fn run_path_check_only(
     let mut passed = true;
 
     // Collect states in path order (source of first, then targets)
-    let mut state_ids: Vec<StateId> = Vec::new();
-    if let Some(&first_ti) = path.steps.first() {
-        state_ids.push(graph.transitions[first_ti].source);
-    }
+    let mut state_ids: Vec<StateId> = vec![path.start];
     for &ti in &path.steps {
         state_ids.push(graph.transitions[ti].target);
     }

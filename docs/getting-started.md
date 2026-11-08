@@ -6,23 +6,23 @@ type: tutorial
 
 # Getting started with Missouri
 
-Test a command that creates a file. Define its starting files and expected result, run the test, then diagnose an intentional failure. You need a bash or zsh terminal and Missouri 0.2.5. The exercise uses only local shell commands; it needs no agent or service credentials.
+Test a command that creates a file. Define its starting files and expected result, run the test, then diagnose an intentional failure. You need a bash or zsh terminal and Missouri 0.2.6. The exercise uses only local shell commands; it needs no agent or service credentials.
 
 ## Install missouri
 
 If you have Rust 1.88 or newer and a C compiler, install the pinned release:
 
 ```
-cargo install --locked missouri --version 0.2.5
+cargo install --locked missouri --version 0.2.6
 ```
 
-Alternatively, extract the binary for your platform from the [0.2.5 release](https://github.com/cjohnhanson/missouri/releases/tag/v0.2.5) and put it on PATH. Check the binary:
+Alternatively, extract the binary for your platform from the [0.2.6 release](https://github.com/cjohnhanson/missouri/releases/tag/v0.2.6) and put it on PATH. Check the binary:
 
 ```
 missouri --version
 ```
 
-The version output is `missouri 0.2.5`.
+The version output is `missouri 0.2.6`.
 
 ## Initialize a project
 
@@ -229,5 +229,5 @@ A filesystem mismatch works the same way. Missouri reports the diff when the com
 - Add `comparators` to a transition to skip a volatile file or to run a custom diff command. Read the [configuration format](config-format.md) for the full `missouri.yml` schema.
 - Add `env` to a state or to the project config to set environment variables.
 - Put shared scripts in `.missouri/bin/`. Missouri adds that directory to PATH during a test run.
-- Use [How to diagnose a failing test](how-to-diagnose-failures.md) for exit-code, output, and filesystem mismatches, including the `--keep-temp` limitation in release 0.2.5.
+- Use [How to diagnose a failing test](how-to-diagnose-failures.md) to investigate exit-code, output, and filesystem mismatches. Use `--keep-temp` to inspect a command's resulting files.
 - Use [command and agent assertions](writing-tests.md#agent-assertions) to distinguish reproducible checks from model judgments. The default filesystem comparison requires no agent.

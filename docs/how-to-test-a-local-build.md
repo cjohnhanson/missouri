@@ -13,7 +13,7 @@ the tests from accidentally running an older installed version.
 This guide uses an existing Cargo project with a binary named `my-tool`
 and a `--help` command that exits successfully. Replace `my-tool` with
 your Cargo binary name in the build command, wrapper, and transition.
-You need Cargo and Missouri 0.2.5 on PATH. The
+You need Cargo and Missouri 0.2.6 on PATH. The
 [first tutorial](getting-started.md) covers Missouri installation and
 the state model.
 

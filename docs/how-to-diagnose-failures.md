@@ -45,30 +45,13 @@ missouri run --no-check -v
 
 ## Inspect a command's resulting files
 
-Release 0.2.5 removes temporary directories even with `--keep-temp`, and it does not print their paths. The unreleased fix retains them and reports each path on stderr. In a binary containing the fix, run:
+Use `--keep-temp` to keep each temporary test directory after the run.
 
 ```sh
 missouri run --keep-temp -v
 ```
 
-Read the directory named by `missouri: kept temporary directory: <path>`. It contains the actual test result. Remove that retained directory when the investigation is finished.
-
-For the released 0.2.5 tutorial suite, reproduce the transition in a separate directory:
-
-```sh
-suite_root=$PWD
-failure_dir=$(mktemp -d)
-cp -R "$suite_root/clean/." "$failure_dir/"
-(
-  cd "$failure_dir"
-  sh -c 'echo hello > output.txt'
-)
-printf 'Reproduction directory: %s\n' "$failure_dir"
-cat "$failure_dir/output.txt"
-diff -u "$suite_root/built/output.txt" "$failure_dir/output.txt"
-```
-
-This example reproduces the tutorial's exact command without modifying either fixture. For another transition, substitute its source state, target, and command. A manual shell does not recreate Missouri's configured setup, environment, shared scripts, or container/Nix sandbox. Reproduce those inputs too, or use a fixed binary when they affect the failure.
+For each directory, read the path in `missouri: kept temporary directory: <path>` on stderr. Inspect the files in that directory for the actual test result. Remove the directory when the investigation ends.
 
 ## Verify the change
 

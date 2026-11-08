@@ -80,8 +80,8 @@ On Debian or Ubuntu, download the `.deb` from the [releases
 page](https://github.com/cjohnhanson/missouri/releases) and install it:
 
 ```
-wget https://github.com/cjohnhanson/missouri/releases/download/v0.2.3/missouri_0.2.3-1_amd64.deb
-sudo dpkg -i missouri_0.2.3-1_amd64.deb
+wget https://github.com/cjohnhanson/missouri/releases/download/v0.2.6/missouri_0.2.6-1_amd64.deb
+sudo dpkg -i missouri_0.2.6-1_amd64.deb
 ```
 
 To run it once without installing anything:

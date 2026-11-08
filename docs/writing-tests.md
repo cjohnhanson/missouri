@@ -408,13 +408,27 @@ assertions:
     command: "grep -q 'status: done' .my-tool/default/fix-the-widget.md"
 ```
 
-An assertion state must belong to an enumerated test path. In release
-0.2.5, a graph with no transitions reports `no test paths found` and exits
-successfully without running assertions, even with `--check-only`.
-`entrypoint: true` alone does not make a standalone assertion state run.
-Connect it to another state with a transition, then use `missouri list`
-to confirm that the path exists. A full run checks actual command results;
-`--check-only` checks fixture copies along those paths.
+To verify a pre-built snapshot without a transition, set `entrypoint: true`
+on the state. A state with assertions and no transitions in or out then
+forms its own test path.
+
+```yaml
+entrypoint: true
+
+assertions:
+  - name: ".my-tool directory exists"
+    command: "test -d .my-tool"
+```
+
+Both `missouri run` and `missouri run --check-only` run the assertions on a
+fresh copy of the fixture. If an assertion fails, missouri reports
+`1 failed`. The command exits with code 1. For this path,
+`missouri run --no-check` skips the assertions and exits with code 0. An
+unconnected root state without `entrypoint: true` forms no path, even if it
+has assertions. If the graph has no path, missouri prints
+`no test paths found`. It exits with code 0 without running any assertions.
+This result does not mean that the assertions passed. Run
+`missouri list --show paths` to confirm that the state name appears.
 
 ## Agent assertions
 
@@ -423,7 +437,7 @@ deterministic command checks poorly. Set an `agent:` field instead of a
 `command:` field. The `agent:` field names a markdown eval file in the
 config directory.
 
-In release 0.2.5, the evaluation runner invokes the `claude` executable.
+In release 0.2.6, the evaluation runner invokes the `claude` executable.
 It requires Claude Code and its own configured access. It is not a
 host-independent adapter, and it does not use a running Codex session.
 An agent evaluation can incur model charges. Deterministic command
@@ -730,11 +744,10 @@ With `-v`, missouri shows the passing steps as well as the failures. It
 prints all assertion output, the command stdout and stderr, and the
 comparison details.
 
-Release 0.2.5 has a `--keep-temp` defect: the directories are removed at
-scope exit and their paths are not printed. The unreleased fix retains
-them and prints `missouri: kept temporary directory: <path>` on stderr.
-Until you use a binary containing that fix, follow the manual-copy
-workflow in [How to diagnose a failing test](how-to-diagnose-failures.md).
+`--keep-temp` keeps each temporary test directory after the run so you can
+inspect the command's resulting files. Follow
+[How to diagnose a failing test](how-to-diagnose-failures.md) for inspection
+steps.
 
 List the paths before a run to understand the graph:
 
