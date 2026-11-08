@@ -1,0 +1,12 @@
+signoff[review-tests] PASS d9a1519 not applicable: the branch changes only three .tisket files and adds no source, test, guard or CI step; a search of .github, .gaff, scripts and tests found nothing that parses .tisket
+signoff[review-docs] PASS d9a1519 checked every factual claim in both v0.2.6 issues against the repository and GitHub (prepublish.sh:59 audit flags, no audit in gate.yml or release.yml, v0.2.4 on the #10 lockfile PR, v0.2.5 latest with its .deb at 200, README.md:83-84 pins v0.2.3, gaff init/check --github exist), swept README, CONTRIBUTING, SECURITY, docs and skills, ran cargo test --test cli_reference; minor: commit title, "publishes the tag", compressed 404 sentence, hg54 sentence length, Debian/Ubuntu wording
+signoff[review-code] PASS d9a1519 not applicable: git diff --name-only shows only two tisket issues and v0.2.6/project.yml; front matter and project.yml match the tool-written v0.2.4 neighbors; factual claims spot-checked against prepublish.sh, workflows, README and tags
+signoff[review-deps] PASS d9a1519 not applicable: no change to Cargo.toml, Cargo.lock, any .rs or .sh source or any workflow, so no dependency, advisory, licence, spawn or install step is added or altered
+signoff[review-usability] PASS d9a1519 not applicable to tool usability: no command, flag, output, error or doc changes; tisket check exits 0, tisket issue list/show resolve both issues, and each issue's claims match the repository; minor: "release workflow" and release.yml name one file
+
+Round two of two. All five checks re-ran against d9a1519 after the pgex rewrite (Change and Acceptance now both use the latest published release tag) and the hg54 actor fix. gitleaks over the tree and origin/main..HEAD: no leaks.
+
+Declined minor findings, with reasons:
+- review-docs 1 (commit title): the squash commit carries the title "chore: track two release gaps for 0.2.6", so the d9a1519 title does not reach main.
+- review-docs 2-5 and review-usability (wording): the issue text is accurate enough to act on, and a contributor who picks up pgex or hg54 rewrites it with the change; a third review round for wording is outside the two-round limit.
+- review-docs 6: pgex tracks it.
