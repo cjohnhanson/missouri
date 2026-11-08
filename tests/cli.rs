@@ -1561,6 +1561,58 @@ fn a_lone_entrypoint_without_assertions_stays_outside_the_paths() {
         .stderr(predicate::str::contains("no test paths found"));
 }
 
+/// Writes `files` as (state, missouri.yml) pairs and returns the numbered
+/// lines of `missouri list --show paths`.
+fn listed_paths(files: &[(&str, &str)]) -> Vec<String> {
+    let suite = tmpdir();
+    for (state, yml) in files {
+        let dir = suite.path().join(state).join(".missouri");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("missouri.yml"), yml).unwrap();
+    }
+    let output = missouri()
+        .args(["list", "--show", "paths", "-d"])
+        .arg(suite.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .filter(|line| {
+            line.split_once(". ")
+                .is_some_and(|(n, _)| n.parse::<usize>().is_ok())
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+// A snapshot path has no transitions, so it lists as a bare state name.
+#[test]
+fn an_entrypoint_with_edges_gets_no_snapshot_path() {
+    let paths = listed_paths(&[
+        (
+            "ep",
+            "entrypoint: true\nassertions:\n  - command: 'true'\ntransitions:\n  - command: 'true'\n    target: ../b\n",
+        ),
+        ("b", "{}\n"),
+    ]);
+    assert!(!paths.is_empty());
+    assert!(
+        paths.iter().all(|line| line.ends_with("ep → b")),
+        "{paths:?}"
+    );
+}
+
+#[test]
+fn a_reachable_terminal_entrypoint_gets_no_snapshot_path() {
+    let paths = listed_paths(&[
+        ("a", "transitions:\n  - command: 'true'\n    target: ../b\n"),
+        ("b", "entrypoint: true\nassertions:\n  - command: 'true'\n"),
+    ]);
+    assert_eq!(paths, ["1. a → b"]);
+}
+
 #[test]
 fn keep_temp_preserves_assertion_only_state_after_process_exit() {
     for pass in [true, false] {
