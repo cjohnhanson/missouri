@@ -6,7 +6,7 @@ type: tutorial
 
 # Getting started with Missouri
 
-Test a command that creates a file. Define its starting files and expected result, run the test, then diagnose an intentional failure. You need a bash or zsh terminal and Missouri 0.2.6. The exercise uses only local shell commands; it needs no agent or service credentials.
+Test a command that creates a file. Define its starting files and expected result, run the test, then diagnose an intentional failure. You need a bash or zsh terminal and Missouri 0.2.6. The exercise uses only local shell commands; it needs no network access or account credentials.
 
 ## Install missouri
 
@@ -73,7 +73,7 @@ echo "hello" > built/output.txt
 The directory tree now looks like:
 
 ```
-my-project/
+$missouri_demo/
   .missouri/
     missouri.yml
     bin/
@@ -217,7 +217,7 @@ Missouri shows the exact mismatch. Change the value back to `"hello\n"`, then ve
 missouri run -v
 ```
 
-The result reports one passing path and one assertion. The failed run did not rewrite the expected fixture. Keep the fixture aligned with the intended behavior; do not copy a wrong result into it merely to get a pass.
+The result reports one passing path and one assertion. The failed run did not change the expected fixture.
 
 A filesystem mismatch works the same way. Missouri reports the diff when the command produces a file that the target state does not hold, or when the contents differ.
 

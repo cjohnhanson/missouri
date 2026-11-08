@@ -28,8 +28,9 @@ missouri state add clean -d tests/missouri
 missouri state add help -d tests/missouri
 ```
 
-If this suite already exists, keep its configuration and states. Add
-the following setup entry to `tests/missouri/.missouri/missouri.yml`:
+If this suite already exists, keep its configuration and states. Add the
+setup entry below to its existing configuration. For a new suite, replace
+`{}` in `tests/missouri/.missouri/missouri.yml` with this setup entry:
 
 ```yaml
 setup:
@@ -73,7 +74,7 @@ a substitute for that configuration.
 
 ## Check the actual binary
 
-Add this transition to `tests/missouri/clean/.missouri/missouri.yml`:
+Replace `{}` in `tests/missouri/clean/.missouri/missouri.yml` with this transition:
 
 ```yaml
 transitions:
@@ -96,9 +97,11 @@ missouri run -d tests/missouri -v
 ```
 
 The run first reports the build setup, then the passing transition. A
-failed build stops the suite. If the command is missing, check the wrapper
-name and executable bit. If the wrapper reports a missing binary, check
-the build output and the path in the wrapper.
+failed build stops the suite. If `my-tool: command not found` appears,
+first check that the run command includes `-d tests/missouri`. If the
+command is still missing, check the wrapper name and executable bit. If
+the wrapper reports a missing binary, check the build output and the path
+in the wrapper.
 
 ## Add tests for changes to files
 
@@ -109,7 +112,7 @@ and produce a target containing the project's default configuration.
 Write that expected configuration from the command's requirements before
 comparing it with the implementation.
 
-[Writing state graphs](writing-tests.md#writing-transitions) covers target
+[How to write missouri tests as state graphs](writing-tests.md#writing-transitions) covers target
 paths, branching, and output assertions. In a full run, target assertions
 inspect the result of the transition. `--check-only` checks the saved
 fixtures without executing the transitions.

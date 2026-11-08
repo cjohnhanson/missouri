@@ -28,7 +28,7 @@ Find the first failing step in a path. Later steps on that path do not run after
 
 | Failure | Inspect | Repair |
 | --- | --- | --- |
-| Exit status differs | Command, expected exit code, and stderr | Correct the command or its expected status after checking the intended behavior. |
+| Command exits with a non-zero status | Command, its exit code, and its stderr | After checking the intended behavior, repair the command or the source fixture it needs. |
 | Stdout or stderr differs | Exact expected and actual text, including newlines | Correct output handling or the assertion. Do not remove a meaningful check to hide the difference. |
 | File differs or is missing | Target fixture and command result | Decide whether the implementation is wrong or the expected behavior changed. Update only the incorrect side. |
 | Extra file appears | The file's purpose and whether it is stable | Include required output in the fixture. Ignore only output that the test deliberately does not verify. |
@@ -62,4 +62,4 @@ missouri validate
 missouri run -v
 ```
 
-Both commands must succeed. A passing `--no-check` run alone leaves assertions untested. If the suite contains agent assertions, the full run invokes their configured Claude Code evaluations; review those requirements before running it. See [agent assertions](writing-tests.md#agent-assertions) for that boundary.
+Both commands must succeed. A passing `--no-check` run alone leaves assertions untested. A full run of a suite with agent assertions runs Claude Code evaluations. These evaluations need Claude Code with configured access and can incur model charges. See [agent assertions](writing-tests.md#agent-assertions).

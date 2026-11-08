@@ -55,9 +55,9 @@ Root directory containing states
 
 #### `-v --verbose`
 
-Increase verbosity (-v, -vv, -vvv)
+Show steps and passing assertions for passing paths
 
-Stackable: `-v`, `-vv`, `-vvv`.
+Show each step and the name of each passing assertion for passing paths. Repeating the flag adds no output.
 
 **Default:** `0`
 
