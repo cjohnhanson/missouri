@@ -1614,6 +1614,46 @@ fn a_reachable_terminal_entrypoint_gets_no_snapshot_path() {
 }
 
 #[test]
+fn an_interrupt_between_transitions_keeps_the_carried_directory() {
+    let suite = tmpdir();
+    let observed = suite.path().join("observed-path");
+    for state in ["a", "b", "c"] {
+        fs::create_dir_all(suite.path().join(state).join(".missouri")).unwrap();
+    }
+    fs::write(
+        suite.path().join("a/.missouri/missouri.yml"),
+        format!("env:\n  OBSERVED_PATH: {}\ntransitions:\n  - command: 'trap \"\" INT TERM; printf %s \"$PWD\" > \"$OBSERVED_PATH\"; kill -INT $PPID; sleep 1'\n    target: ../b\n", observed.display()),
+    )
+    .unwrap();
+    fs::write(
+        suite.path().join("b/.missouri/missouri.yml"),
+        "transitions:\n  - command: 'true'\n    target: ../c\n",
+    )
+    .unwrap();
+    fs::write(suite.path().join("c/.missouri/missouri.yml"), "{}\n").unwrap();
+    let output = missouri()
+        .args(["run", "--keep-temp", "-d"])
+        .arg(suite.path())
+        .output()
+        .unwrap();
+    let path = fs::read_to_string(&observed).unwrap();
+    assert!(
+        Path::new(&path).exists(),
+        "carried directory removed: {path}"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let reported = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("missouri: kept temporary directory: "))
+        .expect("retained directory is reported");
+    assert_eq!(
+        fs::canonicalize(reported).unwrap(),
+        fs::canonicalize(&path).unwrap()
+    );
+    fs::remove_dir_all(path).unwrap();
+}
+
+#[test]
 fn keep_temp_preserves_assertion_only_state_after_process_exit() {
     for pass in [true, false] {
         let suite = tmpdir();
