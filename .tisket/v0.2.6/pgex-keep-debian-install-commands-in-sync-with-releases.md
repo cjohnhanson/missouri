@@ -8,19 +8,20 @@ labels:
 - docs
 depends_on: []
 created: 2026-11-08T05:10:38Z
-updated: 2026-11-08T05:10:38Z
+updated: 2026-11-08T06:00:00Z
 ---
 
 ## Problem
 
-README.md’s Install section downloads and installs v0.2.3 on Debian and Ubuntu, two releases behind v0.2.5. The package version and filename are hard-coded. The release process neither updates nor checks them.
+README.md's Debian/Ubuntu commands pin v0.2.3, two releases behind v0.2.5. No release step updates or checks them. The `.deb` filename contains the version, so `releases/latest/download/` alone cannot fix this. Unpublished `Cargo.toml` versions produce 404s; the latest published release tag is the reference.
 
 ## Change
 
-Update both commands to use `missouri_0.2.5-1_amd64.deb`. Add an automated version check and include it in the release process after the `Cargo.toml` version bump. Update CONTRIBUTING.md accordingly. A `releases/latest/download/` URL alone cannot resolve a filename containing the version.
+Update both commands to v0.2.5. Add a check that reads the latest published release tag and rejects mismatches in either command, independently of releases. Add a CONTRIBUTING.md Releases step: after `release.yml` publishes the tag, the maintainer updates both commands.
 
 ## Acceptance
 
-1. The README `.deb` URL’s release tag and package filename, including the filename passed to `dpkg`, match the version in `Cargo.toml`.
-2. Running both README commands on Debian or Ubuntu amd64 installs a binary whose `missouri --version` matches `Cargo.toml`.
-3. Changing either README command’s `.deb` version to differ from `Cargo.toml` makes a test or `scripts/prepublish.sh` fail; matching versions pass.
+1. The URL tag, URL filename, and `dpkg` filename all name the latest published release.
+2. On Debian or Ubuntu amd64, both commands install a binary whose `missouri --version` matches that tag.
+3. The check fails when either command names another version and passes when both match.
+4. CONTRIBUTING.md places the README update after publication.
