@@ -8,7 +8,7 @@ use camino::Utf8Path;
 use ignore::gitignore::Gitignore;
 use serde_json::{Value, json};
 
-use crate::graph::StateGraph;
+use crate::graph::{StateGraph, StateId};
 use crate::paths::TestPath;
 
 /// Render a test path as a markdown document.
@@ -20,12 +20,8 @@ use crate::paths::TestPath;
 /// 4. Command in a console code block
 /// 5. Expected stdout (if present)
 ///
-/// Returns an empty string for paths with no steps.
+/// A path with no steps renders its one state as the final state.
 pub fn render_markdown(graph: &StateGraph, path: &TestPath) -> String {
-    if path.steps.is_empty() {
-        return String::new();
-    }
-
     let mut out = String::new();
 
     // Walk through each step: state + transition
@@ -74,8 +70,7 @@ pub fn render_markdown(graph: &StateGraph, path: &TestPath) -> String {
     }
 
     // Final state
-    let last_t = &graph.transitions[*path.steps.last().unwrap()];
-    let final_state = &graph.states[last_t.target.0];
+    let final_state = &graph.states[final_state_id(graph, path).0];
 
     out.push_str(&format!("## {}\n\n", final_state.name));
 
@@ -102,11 +97,10 @@ pub fn render_markdown(graph: &StateGraph, path: &TestPath) -> String {
 /// Returns a JSON object with a `steps` array. Each step has:
 /// - `state`: `{ name, doc, files }`
 /// - `transition`: `{ name, command, doc, stdout }`
+///
+/// A `final_state` object follows the steps. A path with no steps has an
+/// empty `steps` array, and its one state is the final state.
 pub fn render_json(graph: &StateGraph, path: &TestPath) -> Value {
-    if path.steps.is_empty() {
-        return json!({ "steps": [] });
-    }
-
     let mut steps = Vec::new();
 
     for &step_idx in &path.steps {
@@ -135,8 +129,7 @@ pub fn render_json(graph: &StateGraph, path: &TestPath) -> Value {
     }
 
     // Include the final state (no outgoing transition)
-    let last_t = &graph.transitions[*path.steps.last().unwrap()];
-    let final_state = &graph.states[last_t.target.0];
+    let final_state = &graph.states[final_state_id(graph, path).0];
     let final_files =
         walk_state_files_with_content(&final_state.path, &graph.config_dir, &graph.ignore);
 
@@ -148,6 +141,14 @@ pub fn render_json(graph: &StateGraph, path: &TestPath) -> Value {
             "files": final_files,
         }
     })
+}
+
+/// The state where a path ends: the target of its last step, or its start
+/// state when it has no steps.
+fn final_state_id(graph: &StateGraph, path: &TestPath) -> StateId {
+    path.steps
+        .last()
+        .map_or(path.start, |&step| graph.transitions[step].target)
 }
 
 /// Walk a state directory and return the relative file paths, sorted. Skips

@@ -1548,6 +1548,32 @@ fn a_lone_entrypoint_with_assertions_is_a_listed_path() {
 }
 
 #[test]
+fn docgen_renders_the_state_of_a_lone_entrypoint() {
+    let suite = snapshot_suite("true");
+    let config = suite.path().join("snapshot/.missouri/missouri.yml");
+    let yaml = fs::read_to_string(&config).unwrap();
+    fs::write(&config, format!("doc: The project holds evidence.\n{yaml}")).unwrap();
+    missouri()
+        .args(["docgen", "-d"])
+        .arg(suite.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("## snapshot"))
+        .stdout(predicate::str::contains("The project holds evidence."))
+        .stdout(predicate::str::contains("evidence.txt"));
+    let output = missouri()
+        .args(["docgen", "--format", "json", "-d"])
+        .arg(suite.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["steps"], serde_json::json!([]));
+    assert_eq!(json["final_state"]["name"], "snapshot");
+    assert_eq!(json["final_state"]["doc"], "The project holds evidence.");
+}
+
+#[test]
 fn a_lone_entrypoint_without_assertions_stays_outside_the_paths() {
     let suite = tmpdir();
     let state = suite.path().join("empty/.missouri");
