@@ -18,6 +18,10 @@ A state can also carry assertions. An assertion is a command that
 verifies a property that the filesystem snapshot does not hold, such as
 an exit code or the exact stdout.
 
+To add a suite to an existing project, start with
+[testing a local build](how-to-test-a-local-build.md). It connects the
+project's build output to the commands in the suite.
+
 ## Directory structure
 
 ```
@@ -331,8 +335,10 @@ both fields.
 ## Writing assertions
 
 An assertion is a command attached to a state. It verifies a property that
-the filesystem snapshot does not hold. It runs against a copy of the
-state's fixture in a temp directory.
+the filesystem snapshot does not hold. In a full run, source assertions
+inspect the starting copy before the first transition. Target assertions
+inspect the actual result after each transition. With `--check-only`,
+assertions inspect fresh copies of the saved state fixtures instead.
 
 ```yaml
 assertions:
@@ -369,9 +375,10 @@ Use an assertion to test a property of a state in place, such as a
 command exit code, the stdout content, or behavior that depends on
 runtime state such as a git branch.
 
-A state can hold both transitions and assertions. An assertion runs
-against the state fixture. A transition runs against the fixture and then
-diffs the result.
+A state can hold both transitions and assertions. In a full run, the
+transition changes the working directory. The diff compares it with the
+target fixture, and the target assertions inspect that working directory.
+Keep assertions read-only so they do not change the input to a later step.
 
 ### Expecting failure
 
@@ -401,8 +408,9 @@ assertions:
     command: "grep -q 'status: done' .my-tool/default/fix-the-widget.md"
 ```
 
-A root state can also hold assertions only. Add `entrypoint: true` to
-verify a pre-built snapshot:
+To verify a pre-built snapshot without a transition, set `entrypoint: true`
+on the state. A state with assertions and no transitions in or out then
+forms its own test path.
 
 ```yaml
 entrypoint: true
@@ -410,9 +418,21 @@ entrypoint: true
 assertions:
   - name: ".my-tool directory exists"
     command: "test -d .my-tool"
-  - name: "settings.local.json is valid JSON"
-    command: "jq empty .claude/settings.local.json"
 ```
+
+A state with assertions, `entrypoint: true`, and no transitions in or out
+forms a one-state path. Both `missouri run` and
+`missouri run --check-only` run its assertions on a fresh copy of its
+fixture. If an assertion fails, missouri reports `1 failed` and exits with
+code 1. For this path, `missouri run --no-check` skips assertions, reports
+the path as passed, and exits with code 0. An unconnected state without
+`entrypoint: true` forms no path, even if it has assertions. Missouri skips
+it without a warning. If the graph has other paths, the run reports only
+those paths and can pass without running the skipped state's assertions.
+If the graph has no path, missouri prints `no test paths found` and exits
+with code 0 without running any assertions. To check an unconnected state,
+set `entrypoint: true` on it. Run `missouri list --show paths` to confirm
+that the state name appears.
 
 ## Agent assertions
 
@@ -420,6 +440,13 @@ An agent assertion uses an LLM to check a state property that a
 deterministic command checks poorly. Set an `agent:` field instead of a
 `command:` field. The `agent:` field names a markdown eval file in the
 config directory.
+
+An agent assertion runs the `claude` executable (Claude Code) to evaluate
+the state. It requires Claude Code installed with its own configured
+access. The evaluation does not use the agent or editor session that
+starts missouri. An agent evaluation can incur model charges.
+Deterministic command assertions and filesystem comparisons do not invoke
+a model.
 
 ```yaml
 assertions:
@@ -482,7 +509,14 @@ Use an agent assertion for a property that needs judgment:
 
 Use a command assertion for a deterministic check, such as a file that
 must exist, output that must match, or an exit code. A command assertion
-costs nothing to run and returns the same answer every time.
+runs the command you supply. Its repeatability depends on that command's
+inputs and environment; network calls or clock-dependent output can
+still vary. Use local, controlled inputs for deterministic checks.
+
+An agent verdict can vary even when the files do not change. Keep exact
+exit-code, schema, and content checks as command assertions. Add agent
+judgment only for criteria that need it, and inspect the verdict's
+evidence before accepting it.
 
 ## Custom comparators
 
@@ -684,9 +718,6 @@ missouri run -d tests/missouri
 # Verbose output. Show the passing steps too.
 missouri run -d tests/missouri -v
 
-# Keep the temp directories for debugging
-missouri run -d tests/missouri --keep-temp
-
 # Run the assertions only. Skip the transitions and the filesystem comparison.
 missouri run -d tests/missouri --check-only
 
@@ -711,13 +742,14 @@ Run the transitions, read the diff, then update the expected state.
 
 ### Debugging failures
 
-With `-v`, missouri shows the passing steps as well as the failures. It
-prints all assertion output, the command stdout and stderr, and the
-comparison details.
+With `-v`, passing paths also list each step as
+`source → target (transition)` and name each passing assertion. Failure
+details print with or without `-v`.
 
-With `--keep-temp`, missouri keeps the temp directories where the
-transitions ran instead of deleting them. It prints the paths in the
-output. Read them to see what the command produced.
+`--keep-temp` keeps each temporary test directory after the run so you can
+inspect the command's resulting files. Follow
+[How to diagnose a failing test](how-to-diagnose-failures.md) for inspection
+steps.
 
 List the paths before a run to understand the graph:
 
@@ -731,8 +763,7 @@ missouri list --show transitions -d tests/missouri
 
 ### Pattern: build-then-test with setup
 
-Build the binary under test in the setup phase. The binary on PATH then
-matches the current source:
+Build the binary under test in the setup phase:
 
 ```yaml
 # .missouri/missouri.yml
@@ -743,6 +774,10 @@ packages:
   - git
   - jq
 ```
+
+Building alone does not put `target/debug/my-tool` on the test PATH.
+Add an executable wrapper in `.missouri/bin/` that runs that exact binary,
+as shown in [testing a local build](how-to-test-a-local-build.md).
 
 ### Pattern: ignore non-deterministic paths per transition
 
@@ -781,7 +816,8 @@ jq empty "$1" || { echo "FAIL: not valid JSON"; exit 1; }
 jq -e '.hooks' "$1" >/dev/null || { echo "FAIL: missing hooks"; exit 1; }
 ```
 
-Then name the script in the config. It is on PATH:
+Make the script executable with `chmod +x .missouri/bin/validate-settings`.
+Then name it in the config. The bin directory is on the test PATH:
 
 ```yaml
 comparators:

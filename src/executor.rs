@@ -1518,8 +1518,14 @@ fn run_path(graph: &StateGraph, path: &TestPath, opts: &RunOptions, path_idx: us
     let path_display = path.display(graph);
     let start = Instant::now();
 
+    // A path with no steps is one snapshot state. It has no transition to
+    // execute, so a full run checks its assertions the way a check-only
+    // run does.
+    let check_snapshot = path.steps.is_empty() && opts.check_mode == CheckMode::Full;
+
     let mut result = match opts.check_mode {
         CheckMode::CheckOnly => run_path_check_only(graph, path, path_display, opts),
+        CheckMode::Full if check_snapshot => run_path_check_only(graph, path, path_display, opts),
         CheckMode::Full | CheckMode::NoCheck => {
             run_path_transitions(graph, path, path_display, opts, path_idx)
         }
@@ -1539,10 +1545,7 @@ fn run_path_check_only(
     let mut passed = true;
 
     // Collect states in path order (source of first, then targets)
-    let mut state_ids: Vec<StateId> = Vec::new();
-    if let Some(&first_ti) = path.steps.first() {
-        state_ids.push(graph.transitions[first_ti].source);
-    }
+    let mut state_ids: Vec<StateId> = vec![path.start];
     for &ti in &path.steps {
         state_ids.push(graph.transitions[ti].target);
     }
@@ -1612,9 +1615,7 @@ fn run_path_check_only(
             duration: step_start.elapsed(),
         });
 
-        if !opts.keep_temp {
-            drop(temp_dir);
-        }
+        finish_temp_dir(temp_dir, opts.keep_temp);
 
         if !assertions_passed {
             break;
@@ -1626,6 +1627,15 @@ fn run_path_check_only(
         steps,
         passed,
         duration: Duration::ZERO,
+    }
+}
+
+/// Complete a test directory's lifetime. Skipping an explicit drop is not
+/// sufficient: TempDir also removes the directory when it leaves scope.
+fn finish_temp_dir(temp_dir: TempDir, keep: bool) {
+    if keep {
+        let path = temp_dir.keep();
+        eprintln!("missouri: kept temporary directory: {}", path.display());
     }
 }
 
@@ -1757,8 +1767,8 @@ fn run_path_transitions(
         // If this step passed and there are more steps, carry the temp dir forward
         if step_passed && step_idx + 1 < path.steps.len() {
             current_dir = Some((temp_dir, work_dir));
-        } else if !opts.keep_temp {
-            drop(temp_dir); // cleanup
+        } else {
+            finish_temp_dir(temp_dir, opts.keep_temp);
         }
 
         steps.push(step_result);
@@ -1766,6 +1776,11 @@ fn run_path_transitions(
         if !step_passed {
             break; // stop on first failure
         }
+    }
+
+    // An interrupt between transitions can leave the carried directory here.
+    if let Some((temp_dir, _)) = current_dir {
+        finish_temp_dir(temp_dir, opts.keep_temp);
     }
 
     PathResult {

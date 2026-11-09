@@ -80,8 +80,8 @@ On Debian or Ubuntu, download the `.deb` from the [releases
 page](https://github.com/cjohnhanson/missouri/releases) and install it:
 
 ```
-wget https://github.com/cjohnhanson/missouri/releases/download/v0.2.3/missouri_0.2.3-1_amd64.deb
-sudo dpkg -i missouri_0.2.3-1_amd64.deb
+wget https://github.com/cjohnhanson/missouri/releases/download/v0.2.6/missouri_0.2.6-1_amd64.deb
+sudo dpkg -i missouri_0.2.6-1_amd64.deb
 ```
 
 To run it once without installing anything:
@@ -125,6 +125,8 @@ missouri docs [topic]      # bundled documentation
 - [What is Missouri?](docs/what-is-missouri.md). The testing model, why graphs, and how a path runs.
 - [Getting Started](docs/getting-started.md). A walkthrough of a first test suite.
 - [Writing Tests](docs/writing-tests.md). Transitions, assertions, comparators, and services.
+- [How to diagnose a failing test](docs/how-to-diagnose-failures.md). Identify the failing comparison, reproduce a transition, and verify a repair.
+- [How to test a local build](docs/how-to-test-a-local-build.md). Add a suite to an existing Cargo project and run its freshly built binary.
 - [CLI Reference](docs/cli-reference.md). Every command and flag.
 - [Configuration format](docs/config-format.md). Every config field.
 

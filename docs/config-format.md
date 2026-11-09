@@ -313,7 +313,7 @@ A root state has no inbound transitions. Test path enumeration starts at the roo
 
 A terminal state has no outgoing transitions. Its config is empty, or it holds assertions only. A test path ends here.
 
-A test path is a walk through the graph from a root state. It ends at a terminal state, at a state that sets `entrypoint: true`, or at a cycle where every successor is already visited. Missouri enumerates every such path and runs the paths in parallel. A graph that branches (`A -> B` and `A -> C`) produces two paths.
+A test path is a walk through the graph from a root state. It ends at a terminal state or at a state that sets `entrypoint: true`. It also ends at a cycle where every successor is already visited. An unconnected state with assertions and `entrypoint: true` forms a one-state path. An unconnected state without `entrypoint: true` forms no path. Missouri enumerates every such path and runs the paths in parallel. A graph that branches (`A -> B` and `A -> C`) produces two paths.
 
 A chained path is a multi-step path such as `A -> B -> C`. Missouri carries the temp directory from one transition forward as the input to the next. It does not copy the intermediate state from disk again.
 

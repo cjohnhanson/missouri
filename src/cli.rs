@@ -158,9 +158,10 @@ pub struct RunArgs {
     #[arg(short, long, default_value = ".")]
     pub dir: Utf8PathBuf,
 
-    /// Increase verbosity (-v, -vv, -vvv)
+    /// Show steps and passing assertions for passing paths
     ///
-    /// Stackable: `-v`, `-vv`, `-vvv`.
+    /// Show each step and the name of each passing assertion for passing paths.
+    /// Repeating the flag adds no output.
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
@@ -168,7 +169,7 @@ pub struct RunArgs {
     #[arg(short, long)]
     pub quiet: bool,
 
-    /// Keep temp directories after run (for debugging)
+    /// Keep temp directories after run and print their paths to stderr
     #[arg(long)]
     pub keep_temp: bool,
 

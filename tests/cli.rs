@@ -1427,3 +1427,297 @@ fn workspace_validate_checks_all_members() {
         .stdout(predicate::str::contains("sub-a"))
         .stdout(predicate::str::contains("sub-b"));
 }
+
+// A retained directory must survive the entire process, on both passing and
+// failing runs. Checking only during execution misses TempDir's scope cleanup.
+#[test]
+fn keep_temp_preserves_transition_results_and_reports_the_path() {
+    for pass in [true, false] {
+        for keep in [true, false] {
+            let suite = tmpdir();
+            let observed = suite.path().join("observed-path");
+            let before = suite.path().join("before/.missouri");
+            let after = suite.path().join("after/.missouri");
+            fs::create_dir_all(&before).unwrap();
+            fs::create_dir_all(&after).unwrap();
+            fs::write(
+                before.join("missouri.yml"),
+                format!("env:\n  OBSERVED_PATH: {}\ntransitions:\n  - command: 'printf %s \"$PWD\" > \"$OBSERVED_PATH\"; printf actual > output.txt'\n    target: ../after\n", observed.display()),
+            )
+            .unwrap();
+            fs::write(after.join("missouri.yml"), "{}\n").unwrap();
+            fs::write(
+                suite.path().join("after/output.txt"),
+                if pass { "actual" } else { "expected" },
+            )
+            .unwrap();
+            let mut cmd = missouri();
+            cmd.args(["run", "-d"]).arg(suite.path());
+            if keep {
+                cmd.arg("--keep-temp");
+            }
+            let output = cmd.output().unwrap();
+            assert_eq!(output.status.success(), pass);
+            let path = fs::read_to_string(&observed).unwrap();
+            assert_eq!(Path::new(&path).exists(), keep, "{path}");
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            if keep {
+                let reported = stderr
+                    .lines()
+                    .find_map(|line| line.strip_prefix("missouri: kept temporary directory: "))
+                    .expect("retained directory is reported");
+                assert_eq!(
+                    fs::canonicalize(reported).unwrap(),
+                    fs::canonicalize(&path).unwrap()
+                );
+                assert_eq!(
+                    fs::read_to_string(Path::new(&path).join("output.txt")).unwrap(),
+                    "actual"
+                );
+                fs::remove_dir_all(path).unwrap();
+            } else {
+                assert!(!stderr.contains("kept temporary directory:"));
+            }
+        }
+    }
+}
+
+/// A suite of one state marked `entrypoint: true`, holding one assertion.
+fn snapshot_suite(assertion: &str) -> tempfile::TempDir {
+    let suite = tmpdir();
+    let state = suite.path().join("snapshot/.missouri");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(
+        state.join("missouri.yml"),
+        format!(
+            "entrypoint: true\nassertions:\n  - name: snapshot check\n    command: '{assertion}'\n"
+        ),
+    )
+    .unwrap();
+    fs::write(suite.path().join("snapshot/evidence.txt"), "held\n").unwrap();
+    suite
+}
+
+#[test]
+fn a_failing_assertion_on_a_lone_entrypoint_fails_the_run() {
+    for flags in [&["run"][..], &["run", "--check-only"][..]] {
+        let suite = snapshot_suite("false");
+        missouri()
+            .args(flags)
+            .arg("-d")
+            .arg(suite.path())
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("1 failed"));
+    }
+}
+
+#[test]
+fn a_passing_assertion_on_a_lone_entrypoint_reads_the_fixture_and_passes() {
+    for flags in [&["run"][..], &["run", "--check-only"][..]] {
+        let suite = snapshot_suite("grep -q held evidence.txt");
+        missouri()
+            .args(flags)
+            .arg("-d")
+            .arg(suite.path())
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("1 passed, 0 failed"));
+    }
+}
+
+#[test]
+fn no_check_skips_the_assertion_on_a_lone_entrypoint() {
+    let suite = snapshot_suite("false");
+    missouri()
+        .args(["run", "--no-check", "-d"])
+        .arg(suite.path())
+        .assert()
+        .success();
+}
+
+#[test]
+fn a_lone_entrypoint_with_assertions_is_a_listed_path() {
+    let suite = snapshot_suite("true");
+    missouri()
+        .args(["list", "--show", "paths", "-d"])
+        .arg(suite.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("snapshot"));
+}
+
+#[test]
+fn docgen_renders_the_state_of_a_lone_entrypoint() {
+    let suite = snapshot_suite("true");
+    let config = suite.path().join("snapshot/.missouri/missouri.yml");
+    let yaml = fs::read_to_string(&config).unwrap();
+    fs::write(&config, format!("doc: The project holds evidence.\n{yaml}")).unwrap();
+    missouri()
+        .args(["docgen", "-d"])
+        .arg(suite.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("## snapshot"))
+        .stdout(predicate::str::contains("The project holds evidence."))
+        .stdout(predicate::str::contains("evidence.txt"));
+    let output = missouri()
+        .args(["docgen", "--format", "json", "-d"])
+        .arg(suite.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["steps"], serde_json::json!([]));
+    assert_eq!(json["final_state"]["name"], "snapshot");
+    assert_eq!(json["final_state"]["doc"], "The project holds evidence.");
+}
+
+#[test]
+fn a_lone_entrypoint_without_assertions_stays_outside_the_paths() {
+    let suite = tmpdir();
+    let state = suite.path().join("empty/.missouri");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("missouri.yml"), "entrypoint: true\n").unwrap();
+    missouri()
+        .args(["run", "-d"])
+        .arg(suite.path())
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("no test paths found"));
+}
+
+/// Writes `files` as (state, missouri.yml) pairs and returns the numbered
+/// lines of `missouri list --show paths`.
+fn listed_paths(files: &[(&str, &str)]) -> Vec<String> {
+    let suite = tmpdir();
+    for (state, yml) in files {
+        let dir = suite.path().join(state).join(".missouri");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("missouri.yml"), yml).unwrap();
+    }
+    let output = missouri()
+        .args(["list", "--show", "paths", "-d"])
+        .arg(suite.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .filter(|line| {
+            line.split_once(". ")
+                .is_some_and(|(n, _)| n.parse::<usize>().is_ok())
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+// A snapshot path has no transitions, so it lists as a bare state name.
+#[test]
+fn an_entrypoint_with_edges_gets_no_snapshot_path() {
+    let paths = listed_paths(&[
+        (
+            "ep",
+            "entrypoint: true\nassertions:\n  - command: 'true'\ntransitions:\n  - command: 'true'\n    target: ../b\n",
+        ),
+        ("b", "{}\n"),
+    ]);
+    assert!(!paths.is_empty());
+    assert!(
+        paths.iter().all(|line| line.ends_with("ep → b")),
+        "{paths:?}"
+    );
+}
+
+#[test]
+fn a_reachable_terminal_entrypoint_gets_no_snapshot_path() {
+    let paths = listed_paths(&[
+        ("a", "transitions:\n  - command: 'true'\n    target: ../b\n"),
+        ("b", "entrypoint: true\nassertions:\n  - command: 'true'\n"),
+    ]);
+    assert_eq!(paths, ["1. a → b"]);
+}
+
+#[test]
+fn an_interrupt_between_transitions_keeps_the_carried_directory() {
+    let suite = tmpdir();
+    let observed = suite.path().join("observed-path");
+    for state in ["a", "b", "c"] {
+        fs::create_dir_all(suite.path().join(state).join(".missouri")).unwrap();
+    }
+    fs::write(
+        suite.path().join("a/.missouri/missouri.yml"),
+        format!("env:\n  OBSERVED_PATH: {}\ntransitions:\n  - command: 'trap \"\" INT TERM; printf %s \"$PWD\" > \"$OBSERVED_PATH\"; kill -INT $PPID; sleep 1'\n    target: ../b\n", observed.display()),
+    )
+    .unwrap();
+    fs::write(
+        suite.path().join("b/.missouri/missouri.yml"),
+        "transitions:\n  - command: 'true'\n    target: ../c\n",
+    )
+    .unwrap();
+    fs::write(suite.path().join("c/.missouri/missouri.yml"), "{}\n").unwrap();
+    let output = missouri()
+        .args(["run", "--keep-temp", "-d"])
+        .arg(suite.path())
+        .output()
+        .unwrap();
+    let path = fs::read_to_string(&observed).unwrap();
+    assert!(
+        Path::new(&path).exists(),
+        "carried directory removed: {path}"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let reported = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("missouri: kept temporary directory: "))
+        .expect("retained directory is reported");
+    assert_eq!(
+        fs::canonicalize(reported).unwrap(),
+        fs::canonicalize(&path).unwrap()
+    );
+    fs::remove_dir_all(path).unwrap();
+}
+
+#[test]
+fn keep_temp_preserves_assertion_only_state_after_process_exit() {
+    for pass in [true, false] {
+        let suite = tmpdir();
+        let observed = suite.path().join("observed-path");
+        let state = suite.path().join("state/.missouri");
+        fs::create_dir_all(&state).unwrap();
+        fs::create_dir_all(suite.path().join("after/.missouri")).unwrap();
+        fs::write(suite.path().join("after/.missouri/missouri.yml"), "{}\n").unwrap();
+        fs::write(
+            state.join("missouri.yml"),
+            format!(
+                "transitions:\n  - command: 'true'\n    target: ../after\nenv:\n  OBSERVED_PATH: {}\nassertions:\n  - command: 'printf %s \"$PWD\" > \"$OBSERVED_PATH\"; exit {}'\n",
+                observed.display(),
+                if pass { 0 } else { 1 }
+            ),
+        )
+        .unwrap();
+        fs::write(suite.path().join("state/evidence.txt"), "fixture evidence").unwrap();
+        let output = missouri()
+            .args(["run", "--check-only", "--keep-temp", "-d"])
+            .arg(suite.path())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.success(), pass);
+        let path = fs::read_to_string(observed).unwrap();
+        assert_eq!(
+            fs::read_to_string(Path::new(&path).join("evidence.txt")).unwrap(),
+            "fixture evidence"
+        );
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        let reported = stderr
+            .lines()
+            .find_map(|line| line.strip_prefix("missouri: kept temporary directory: "))
+            .expect("retained directory is reported");
+        assert_eq!(
+            fs::canonicalize(reported).unwrap(),
+            fs::canonicalize(&path).unwrap()
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+}

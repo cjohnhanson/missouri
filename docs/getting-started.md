@@ -1,33 +1,37 @@
 <!-- metadata
-title: "Getting Started with Missouri"
+title: "Getting started with Missouri"
 description: "Create your first state graph test suite"
 type: tutorial
 -->
 
-# Getting Started with Missouri
+# Getting started with Missouri
 
-Missouri tests a CLI tool by modeling its behavior as a graph of filesystem states. A transition says that this command, run on these files, must produce those files. In this tutorial you build a two-state graph, watch it pass, add an assertion, and then watch it fail. Read [What is Missouri?](what-is-missouri.md) for the concepts behind the model.
+Test a command that creates a file. Define its starting files and expected result, run the test, then diagnose an intentional failure. You need a bash or zsh terminal and Missouri 0.2.6. The exercise uses only local shell commands; it needs no network access or account credentials.
 
 ## Install missouri
 
-Build missouri from source:
+If you have Rust 1.88 or newer and a C compiler, install the pinned release:
 
 ```
-cargo install --locked --git https://github.com/cjohnhanson/missouri
+cargo install --locked missouri --version 0.2.6
 ```
 
-Check that the binary is available:
+Alternatively, extract the binary for your platform from the [0.2.6 release](https://github.com/cjohnhanson/missouri/releases/tag/v0.2.6) and put it on PATH. Check the binary:
 
 ```
 missouri --version
 ```
 
+The version output is `missouri 0.2.6`.
+
 ## Initialize a project
 
-Create a directory and initialize the project:
+Create a temporary practice directory and initialize the project:
 
 ```
-mkdir my-project && cd my-project
+missouri_demo=$(mktemp -d)
+cd "$missouri_demo"
+printf 'Practice directory: %s\n' "$missouri_demo"
 missouri init
 ```
 
@@ -69,7 +73,7 @@ echo "hello" > built/output.txt
 The directory tree now looks like:
 
 ```
-my-project/
+$missouri_demo/
   .missouri/
     missouri.yml
     bin/
@@ -145,7 +149,7 @@ missouri list
 
 ## Add an assertion
 
-An assertion is a command that verifies a property of a state. It does not change the state. Missouri runs a target state's assertions after each transition into it, and a source state's assertions before the first transition out of it.
+An assertion is a command that verifies a property of a state. Write assertions to inspect the state without changing it. Missouri runs a target state's assertions after each transition into it, and a source state's assertions before the first transition out of it.
 
 Edit `built/.missouri/missouri.yml`:
 
@@ -207,14 +211,23 @@ FAIL clean → built 22ms
 0 passed, 1 failed, 1 step, 1 assertion in 22ms
 ```
 
-Missouri shows the exact mismatch. Change the value back to `"hello\n"` and the suite passes again.
+Missouri shows the exact mismatch. Change the value back to `"hello\n"`, then verify the repair:
+
+```sh
+missouri run -v
+```
+
+The result reports one passing path and one assertion. The failed run did not change the expected fixture.
 
 A filesystem mismatch works the same way. Missouri reports the diff when the command produces a file that the target state does not hold, or when the contents differ.
 
 ## Next steps
 
+- [Test your project's local build](how-to-test-a-local-build.md) so the
+  suite runs the current binary from your existing repository.
 - Add more states and chain the transitions into multi-step paths. Missouri finds every root-to-leaf path for you.
 - Add `comparators` to a transition to skip a volatile file or to run a custom diff command. Read the [configuration format](config-format.md) for the full `missouri.yml` schema.
 - Add `env` to a state or to the project config to set environment variables.
 - Put shared scripts in `.missouri/bin/`. Missouri adds that directory to PATH during a test run.
-- Use `--verbose` (`-v`) for detailed output. Use `--keep-temp` to read the temp directories that missouri creates.
+- Use [How to diagnose a failing test](how-to-diagnose-failures.md) to investigate exit-code, output, and filesystem mismatches. Use `--keep-temp` to inspect a command's resulting files.
+- Use [command and agent assertions](writing-tests.md#agent-assertions) to distinguish reproducible checks from model judgments. The default filesystem comparison requires no agent.
