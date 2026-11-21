@@ -20,7 +20,7 @@ an exit code or the exact stdout.
 
 ## Directory structure
 
-```
+```text
 my-project/tests/missouri/
 ├── .missouri/
 │   ├── missouri.yml      # project-level config
@@ -118,7 +118,7 @@ Put an `ignore` file at `.missouri/ignore`. It uses gitignore syntax.
 Missouri removes every path that matches a pattern here from the
 filesystem comparison, for every transition.
 
-```
+```gitignore
 # .missouri/ignore
 .git/
 ```
@@ -133,7 +133,7 @@ for a comment, and a trailing `/` for a directory.
 Missouri prepends `.missouri/bin/` to PATH during a test run. Put your
 custom comparators, test helpers, and wrapper scripts there.
 
-```
+```text
 .missouri/bin/
 ├── validate-settings    # custom comparator
 ├── compare-issue        # another custom comparator
@@ -158,7 +158,7 @@ works around this with the `dot-` convention. At runtime, it restores a
 directory named `.missouri/dot-<name>/` as `.<name>/` in the temp
 directory.
 
-```
+```text
 initialized/.missouri/
 ├── missouri.yml
 ├── dot-git/         # becomes .git/ at runtime
@@ -240,7 +240,7 @@ transitions:
 A target is a relative path. Missouri resolves it from the source state
 directory. The common pattern is `../sibling-state`:
 
-```
+```text
 states/
 ├── before/          # source
 │   └── .missouri/missouri.yml  →  target: "../after"
@@ -677,24 +677,117 @@ then saves the captured flow file.
 
 ## Running tests
 
-```bash
-# Run every test path
-missouri run -d tests/missouri
+The commands below run against a small example suite in
+`tests/missouri`. First, create the suite and its two states:
 
-# Verbose output. Show the passing steps too.
-missouri run -d tests/missouri -v
+```console
+$ missouri init -d tests/missouri
+initialized missouri project at [CWD]/tests/missouri/.missouri
 
-# Keep the temp directories for debugging
-missouri run -d tests/missouri --keep-temp
+$ missouri state add state-a -d tests/missouri
+created state "state-a"
 
-# Run the assertions only. Skip the transitions and the filesystem comparison.
-missouri run -d tests/missouri --check-only
+$ missouri state add state-b -d tests/missouri
+created state "state-b"
 
-# Run the transitions and the filesystem comparison only. Skip the assertions.
-missouri run -d tests/missouri --no-check
+```
 
-# Record the transition output
-missouri run -d tests/missouri --record
+Save the `write greeting` transition in
+`tests/missouri/state-a/.missouri/missouri.yml`:
+
+```yaml {filename="tests/missouri/state-a/.missouri/missouri.yml"}
+transitions:
+  - name: "write greeting"
+    command: "echo hello > greeting.txt"
+    target: ../state-b
+```
+
+Save the `greeting says hello` assertion in
+`tests/missouri/state-b/.missouri/missouri.yml`:
+
+```yaml {filename="tests/missouri/state-b/.missouri/missouri.yml"}
+assertions:
+  - name: "greeting says hello"
+    command: "grep -q hello greeting.txt"
+```
+
+Save the expected file for `state-b` as
+`tests/missouri/state-b/greeting.txt`:
+
+```text {filename="tests/missouri/state-b/greeting.txt"}
+hello
+```
+
+Run the suite with `missouri run -d tests/missouri`. Each `[..]` in the
+output stands for a duration, which differs on every run.
+
+```console
+$ missouri run -d tests/missouri
+✓ [1/1]
+PASS state-a → state-b [..]
+
+1 passed, 0 failed, 1 step, 1 assertion in [..]
+
+```
+
+Use `-v` to show each step and each passing assertion's name for this
+passing path:
+
+```console
+$ missouri run -d tests/missouri -v
+✓ [1/1]
+PASS state-a → state-b [..]
+  ✓ state-a → state-b (write greeting) [..]
+    ✓ assert: greeting says hello [..]
+
+1 passed, 0 failed, 1 step, 1 assertion in [..]
+
+```
+
+Use `--check-only` to run only the assertions, skipping the transitions
+and the filesystem comparison:
+
+```console
+$ missouri run -d tests/missouri --check-only
+✓ [1/1]
+PASS state-a → state-b [..]
+
+1 passed, 0 failed, 1 step, 1 assertion in [..]
+
+```
+
+Use `--no-check` to run the transitions and the filesystem comparison,
+skipping the assertions:
+
+```console
+$ missouri run -d tests/missouri --no-check
+✓ [1/1]
+PASS state-a → state-b [..]
+
+1 passed, 0 failed, 1 step in [..]
+
+```
+
+`--record` writes `results.json` under
+`tests/missouri/.missouri/runs/<run-id>/`, plus path directories
+(`path-0/`, `path-1/`, ...) with each step's transition output in
+asciicast files (`step-0.cast`, ...). `--run-id` names the directory;
+without it, the name is a timestamp. `missouri report` selects the run
+whose directory name sorts last, which is the newest run with default
+timestamp IDs.
+
+```console
+$ missouri run -d tests/missouri --record --run-id first
+✓ [1/1]
+PASS state-a → state-b [..]
+
+1 passed, 0 failed, 1 step, 1 assertion in [..]
+
+$ missouri report -d tests/missouri
+PASS: run first, 1 passed, 0 failed
+  PASS state-a → state-b
+    ✓ state-a → state-b (write greeting)
+
 ```
 
 ### Check modes
@@ -711,20 +804,36 @@ Run the transitions, read the diff, then update the expected state.
 
 ### Debugging failures
 
-With `-v`, missouri shows the passing steps as well as the failures. It
-prints all assertion output, the command stdout and stderr, and the
-comparison details.
+With `-v`, missouri adds each step and each passing assertion's name for
+passing paths. For passing commands in the project config's `setup:`
+list, it indents the first 5 stdout lines under `✓ setup: <name>`.
+The flag adds no transition or assertion stdout or stderr. `-vv` adds
+nothing. Failing paths and failing setup commands print details with
+or without `-v`. A non-zero command exit prints
+`command failed: exit code N` and the first 10 lines of stderr.
+Missouri reports transition stdout and stderr mismatches. It lists
+each differing, missing or unexpected file with expected and actual
+content. Each failed assertion prints its error or its expected and
+actual stdout and stderr.
 
-With `--keep-temp`, missouri keeps the temp directories where the
-transitions ran instead of deleting them. It prints the paths in the
-output. Read them to see what the command produced.
+Missouri accepts `--keep-temp`, but this version still removes each temp
+directory after the run and prints no path.
 
 List the paths before a run to understand the graph:
 
-```bash
-missouri list --show paths
-missouri list --show states -d tests/missouri
-missouri list --show transitions -d tests/missouri
+```console
+$ missouri list --show paths -d tests/missouri
+1. state-a → state-b
+
+1 path(s)
+
+$ missouri list --show states -d tests/missouri
+state-a
+state-b
+
+$ missouri list --show transitions -d tests/missouri
+state-a → state-b (write greeting)
+
 ```
 
 ## Patterns

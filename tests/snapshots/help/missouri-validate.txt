@@ -1,0 +1,26 @@
+Validate missouri.yml files without running
+
+Validate the `missouri.yml` files. This command runs nothing else. It checks that every config
+parses, that every transition target resolves to a real state, and that at least one root state
+exists.
+
+Prints a summary: `valid: N state(s), N transition(s), N root(s)`.
+
+Usage: missouri validate [OPTIONS]
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+  -d, --dir <DIR>
+          Root directory containing states
+          
+          [default: .]
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+  -h, --help
+          Print help (see a summary with '-h')

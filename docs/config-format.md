@@ -265,7 +265,7 @@ Missouri starts each service in its own process group, so cleanup can stop the w
 
 The file `<config_dir>/ignore`, for example `.missouri/ignore`, uses gitignore syntax. Its patterns remove paths from the filesystem comparison for every transition.
 
-```
+```gitignore
 # .missouri/ignore
 *.log
 tmp/

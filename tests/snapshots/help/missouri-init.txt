@@ -1,0 +1,26 @@
+Initialize a new missouri project
+
+Create `<config_dir>/` (default `.missouri/`) with `missouri.yml` containing `{}`, an empty `bin/`
+directory, and an `ignore` file containing one comment line.
+
+Print `initialized missouri project at <path>` on success. If `<config_dir>/` already exists, exit
+with status 2 and report `project already initialized at <path>`.
+
+Usage: missouri init [OPTIONS]
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+  -d, --dir <DIR>
+          Root directory for the project
+          
+          [default: .]
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+  -h, --help
+          Print help (see a summary with '-h')

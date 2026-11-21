@@ -1,0 +1,14 @@
+Add a new state
+
+Usage: missouri state add [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  Name of the new state (becomes the directory name)
+
+Options:
+  -C <DIRECTORY>                 Change to this directory before doing anything
+  -d, --dir <DIR>                Root directory containing states [default: .]
+      --config-dir <CONFIG_DIR>  Name of the config directory [default: .missouri]
+      --from <FROM>              Copy from an existing state and create a placeholder transition
+                                 from it to the new state
+  -h, --help                     Print help

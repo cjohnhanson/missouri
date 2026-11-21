@@ -1,0 +1,39 @@
+Generate a report from recorded runs
+
+Usage: missouri report [OPTIONS]
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+  -d, --dir <DIR>
+          Root directory containing states
+          
+          [default: .]
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+      --format <FORMAT>
+          Report format
+          
+          `terminal`: print to stdout.
+          
+          `html`: write `report.html` to the run directory.
+          
+          `md`: write `report.md` to the run directory.
+          
+          [default: terminal]
+          [possible values: terminal, html, md]
+
+      --run <RUN>
+          Run ID to report on (default: last name in sorted order)
+          
+          By default, select the run directory under `<config_dir>/runs/` whose name sorts last.
+          Default timestamp IDs (`YYYY-MM-DDTHH-MM-SS`) put the newest run last; a custom ID such
+          as `zz` sorts after timestamps.
+
+  -h, --help
+          Print help (see a summary with '-h')

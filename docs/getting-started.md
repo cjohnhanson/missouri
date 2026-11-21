@@ -12,28 +12,39 @@ Missouri tests a CLI tool by modeling its behavior as a graph of filesystem stat
 
 Build missouri from source:
 
-```
+```sh
 cargo install --locked --git https://github.com/cjohnhanson/missouri
 ```
 
 Check that the binary is available:
 
+```console
+$ missouri --version
+missouri [..]
+
 ```
-missouri --version
-```
+
+In this output, `[..]` stands for the version number.
 
 ## Initialize a project
 
-Create a directory and initialize the project:
+Create a directory for the project and change into it:
 
-```
+```sh
 mkdir my-project && cd my-project
-missouri init
+```
+
+Initialize the project with `missouri init`. In this output, `[CWD]` stands for the project directory.
+
+```console
+$ missouri init
+initialized missouri project at [CWD]/.missouri
+
 ```
 
 This command creates a `.missouri/` directory that holds:
 
-```
+```text
 .missouri/
   missouri.yml    # project-level config (empty for now)
   bin/            # shared scripts available on PATH during test runs
@@ -48,27 +59,34 @@ A state is a directory with a `.missouri/missouri.yml` file. The files in the di
 
 Create the first state. It is an empty starting point:
 
-```
-missouri state add clean
+```console
+$ missouri state add clean
+created state "clean"
+
+$ cat clean/.missouri/missouri.yml
+{}
+
 ```
 
 This command creates `clean/.missouri/missouri.yml` with an empty config (`{}`).
 
 Now create the second state. It holds the files that must exist *after* the command runs:
 
-```
-missouri state add built
-```
-
-Add the expected output file to the `built` state:
+```console
+$ missouri state add built
+created state "built"
 
 ```
-echo "hello" > built/output.txt
+
+Create `built/output.txt` with the single line `hello`:
+
+```text {filename="built/output.txt"}
+hello
 ```
 
 The directory tree now looks like:
 
-```
+```text
 my-project/
   .missouri/
     missouri.yml
@@ -87,7 +105,7 @@ my-project/
 
 Edit `clean/.missouri/missouri.yml` and declare the transition from the `clean` state to the `built` state:
 
-```yaml
+```yaml {filename="clean/.missouri/missouri.yml"}
 transitions:
   - name: "create output"
     command: "echo hello > output.txt"
@@ -104,17 +122,15 @@ Missouri copies the source state's files to a temp directory. It runs the comman
 
 ## Run the tests
 
-```
-missouri run
-```
+Run the suite with `missouri run`. Each `[..]` in the output stands for a duration, which differs on every run.
 
-The output looks like this:
-
-```
+```console
+$ missouri run
 ✓ [1/1]
-PASS clean → built 14ms
+PASS clean → built [..]
 
-1 passed, 0 failed, 1 step in 14ms
+1 passed, 0 failed, 1 step in [..]
+
 ```
 
 Missouri found two states and one transition from `clean` to `built`. It ran the command. It then confirmed that the resulting filesystem matched the `built` state.
@@ -123,24 +139,20 @@ Missouri found two states and one transition from `clean` to `built`. It ran the
 
 Check that the graph is well-formed. This command runs nothing:
 
-```
-missouri validate
-```
-
-```
+```console
+$ missouri validate
 valid: 2 state(s), 1 transition(s), 1 root(s)
+
 ```
 
 List the test paths that missouri would run:
 
-```
-missouri list
-```
-
-```
+```console
+$ missouri list
 1. clean → built
 
 1 path(s)
+
 ```
 
 ## Add an assertion
@@ -149,7 +161,7 @@ An assertion is a command that verifies a property of a state. It does not chang
 
 Edit `built/.missouri/missouri.yml`:
 
-```yaml
+```yaml {filename="built/.missouri/missouri.yml"}
 assertions:
   - name: "output contains hello"
     command: "cat output.txt"
@@ -164,52 +176,47 @@ The fields:
 
 Run the tests again. Missouri prints a passing assertion only with `-v`:
 
-```
-missouri run -v
-```
-
-```
+```console
+$ missouri run -v
 ✓ [1/1]
-PASS clean → built 30ms
-  ✓ clean → built (create output) 29ms
-    ✓ assert: output contains hello 16ms
+PASS clean → built [..]
+  ✓ clean → built (create output) [..]
+    ✓ assert: output contains hello [..]
 
-1 passed, 0 failed, 1 step, 1 assertion in 30ms
+1 passed, 0 failed, 1 step, 1 assertion in [..]
+
 ```
 
 The assertion ran after the transition. It verified the file contents.
 
 ## See a test fail
 
-Change the expected stdout to a wrong value. Edit `built/.missouri/missouri.yml`:
+Replace the contents of `built/output.txt` with `goodbye`. The transition still writes `hello`, so its output no longer matches the expected file in the `built` state.
 
-```yaml
-assertions:
-  - name: "output contains hello"
-    command: "cat output.txt"
-    stdout: "goodbye\n"
+```text {filename="built/output.txt"}
+goodbye
 ```
 
 Run:
 
-```
-missouri run
-```
-
-```
+```console
+$ missouri run
+? 1
 ✗ [1/1]
-FAIL clean → built 22ms
-  ✗ clean → built (create output) 22ms
-    ✗ assert: output contains hello 11ms
-      stdout expected: "goodbye\n"
-      stdout actual:   "hello\n"
+FAIL clean → built [..]
+  ✗ clean → built (create output) [..]
+    differs: output.txt
+      expected:
+      goodbye
+      
+      actual:
+      hello
 
-0 passed, 1 failed, 1 step, 1 assertion in 22ms
+0 passed, 1 failed, 1 step, 1 assertion in [..]
+
 ```
 
-Missouri shows the exact mismatch. Change the value back to `"hello\n"` and the suite passes again.
-
-A filesystem mismatch works the same way. Missouri reports the diff when the command produces a file that the target state does not hold, or when the contents differ.
+The line `? 1` means the command exited with status 1. Missouri names the file that differs and prints its expected and actual content. Write `hello` back into `built/output.txt` to make the suite pass again. A failed assertion also fails the suite; a stdout mismatch prints `stdout expected:` and `stdout actual:`.
 
 ## Next steps
 
@@ -217,4 +224,4 @@ A filesystem mismatch works the same way. Missouri reports the diff when the com
 - Add `comparators` to a transition to skip a volatile file or to run a custom diff command. Read the [configuration format](config-format.md) for the full `missouri.yml` schema.
 - Add `env` to a state or to the project config to set environment variables.
 - Put shared scripts in `.missouri/bin/`. Missouri adds that directory to PATH during a test run.
-- Use `--verbose` (`-v`) for detailed output. Use `--keep-temp` to read the temp directories that missouri creates.
+- Use `--verbose` (`-v`) for detailed output.

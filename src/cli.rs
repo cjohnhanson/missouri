@@ -25,7 +25,10 @@ pub struct Args {
     #[arg(short = 'C', global = true)]
     pub directory: Option<Utf8PathBuf>,
 
-    /// Name of the config directory (default: .missouri)
+    // Handler: run_command passes it to graph::StateGraph::discover,
+    // scaffold, and recorder::find_run_dir. clap prints the default
+    // after the text, so the text does not repeat it.
+    /// Name of the config directory
     #[arg(long, global = true, default_value = ".missouri")]
     pub config_dir: String,
 
@@ -85,9 +88,14 @@ pub enum Command {
     /// Prints a summary: `valid: N state(s), N transition(s), N root(s)`.
     Validate(ValidateArgs),
 
+    // Handler: run_command, Command::Init, and scaffold::init_project.
     /// Initialize a new missouri project
     ///
-    /// This command creates the config directory structure.
+    /// Create `<config_dir>/` (default `.missouri/`) with `missouri.yml` containing `{}`, an empty
+    /// `bin/` directory, and an `ignore` file containing one comment line.
+    ///
+    /// Print `initialized missouri project at <path>` on success. If `<config_dir>/` already
+    /// exists, exit with status 2 and report `project already initialized at <path>`.
     Init(InitArgs),
 
     /// Manage states
@@ -158,17 +166,36 @@ pub struct RunArgs {
     #[arg(short, long, default_value = ".")]
     pub dir: Utf8PathBuf,
 
-    /// Increase verbosity (-v, -vv, -vvv)
+    // Handler: run_command, Command::Run, passes `verbose > 0` to
+    // report::print_results (steps and passing assertion names for a
+    // passing path) and report::print_setup_results (the first 5 stdout
+    // lines of a passing setup command). No count above one changes
+    // anything.
+    /// Show passing steps, assertion names and setup stdout
     ///
-    /// Stackable: `-v`, `-vv`, `-vvv`.
+    /// Show each step and each passing assertion's name for passing paths. For passing commands in
+    /// the project config's `setup:` list, indent the first 5 stdout lines under `✓ setup: <name>`.
+    /// The flag adds no transition or assertion stdout or stderr. Failing paths and failing setup
+    /// commands print details with or without `-v`. `-vv` adds nothing.
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
-    /// Suppress non-essential output
+    // Handler: none. run_command, Command::Run, never reads `quiet`
+    // (.tisket/v0.2.6/q4ud-run-quiet-suppresses-output-or-goes.md).
+    /// Accepted but has no effect
+    ///
+    /// The run prints the same output with or without `--quiet` (`-q`).
     #[arg(short, long)]
     pub quiet: bool,
 
-    /// Keep temp directories after run (for debugging)
+    // Handler: executor::run_path_transitions and run_path_check_only
+    // skip their explicit `drop(temp_dir)` under `keep_temp`, but the
+    // TempDir still drops at the end of the step, which removes the
+    // directory.
+    /// Accepted but does not keep temp directories
+    ///
+    /// This version removes each temp directory after the run and prints no path, even with
+    /// `--keep-temp`.
     #[arg(long)]
     pub keep_temp: bool,
 
@@ -285,7 +312,13 @@ pub struct ReportArgs {
     #[arg(long, default_value = "terminal")]
     pub format: ReportFormat,
 
-    /// Specific run ID to report on (default: latest)
+    // Handler: recorder::find_run_dir, which sorts the run directory
+    // names and takes the last.
+    /// Run ID to report on (default: last name in sorted order)
+    ///
+    /// By default, select the run directory under `<config_dir>/runs/` whose name sorts last.
+    /// Default timestamp IDs (`YYYY-MM-DDTHH-MM-SS`) put the newest run last; a custom ID such as
+    /// `zz` sorts after timestamps.
     #[arg(long)]
     pub run: Option<String>,
 }
@@ -303,9 +336,14 @@ pub struct ServeArgs {
     #[arg(short, long, default_value = ".")]
     pub dir: Utf8PathBuf,
 
-    /// Specific run ID to serve (default: latest)
+    // Handler: run_command, Command::Serve, which only calls
+    // recorder::find_run_dir; that sorts the run directory names and
+    // takes the last.
+    /// Run ID to check for (default: last name in sorted order)
     ///
-    /// The run to check for. Default: latest.
+    /// Check only that the run exists, defaulting to the directory under `<config_dir>/runs/` whose
+    /// name sorts last. Default timestamp IDs (`YYYY-MM-DDTHH-MM-SS`) put the newest run last; a
+    /// custom ID such as `zz` sorts after timestamps.
     #[arg(long)]
     pub run: Option<String>,
 

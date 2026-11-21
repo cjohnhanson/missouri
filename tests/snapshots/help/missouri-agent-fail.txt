@@ -1,0 +1,21 @@
+Record a failing verdict (called by the agent)
+
+Record a failing verdict with details. The evaluation agent calls this command.
+
+Usage: missouri agent fail [OPTIONS] [DETAILS]...
+
+Arguments:
+  [DETAILS]...
+          Failure details
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+  -h, --help
+          Print help (see a summary with '-h')

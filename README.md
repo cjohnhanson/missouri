@@ -20,7 +20,7 @@ match after the command. Missouri finds every path through the graph,
 runs each path in a temp directory with a cleared environment, and diffs
 the result against the target.
 
-```
+```text
 clean/                  # starting state (empty project)
   .missouri/
     missouri.yml        # transitions: [{command: "echo hello > out.txt", target: ../built}]
@@ -30,13 +30,17 @@ built/                  # expected state after command
   out.txt               # file that should exist: contains "hello"
 ```
 
-```
+```console
 $ missouri run
 ✓ [1/1]
-PASS clean → built 14ms
+PASS clean → built [..]
 
-1 passed, 0 failed, 1 step in 14ms
+1 passed, 0 failed, 1 step in [..]
+
 ```
+
+Each `[..]` in the output stands for a duration, which differs on every
+run.
 
 A state can have several outgoing transitions, which is branching, and
 several states can point at the same target, which is convergence. The
@@ -79,14 +83,14 @@ pages, the README and the licence. There is no Windows build.
 On Debian or Ubuntu, download the `.deb` from the [releases
 page](https://github.com/cjohnhanson/missouri/releases) and install it:
 
-```
+```sh
 wget https://github.com/cjohnhanson/missouri/releases/download/v0.2.3/missouri_0.2.3-1_amd64.deb
 sudo dpkg -i missouri_0.2.3-1_amd64.deb
 ```
 
 To run it once without installing anything:
 
-```
+```sh
 uvx msri run
 npx @cjohnhanson/msri run
 ```
@@ -100,7 +104,7 @@ compiles with Rust 1.88 or newer. A C compiler is needed as well, which
 
 To build missouri:
 
-```
+```sh
 git clone https://github.com/cjohnhanson/missouri
 cd missouri
 cargo build --release
@@ -109,15 +113,43 @@ cargo build --release
 
 ## Usage
 
-```
-missouri init              # set up a new project
-missouri state add <name>  # create a state directory
-missouri run               # execute all test paths
-missouri run -v            # verbose output
-missouri list              # show states, transitions, paths
-missouri validate          # check graph is well-formed
-missouri report            # generate a report from a recorded run
-missouri docs [topic]      # bundled documentation
+```console
+$ missouri --help
+Show-me-state: e2e testing as directed graphs of filesystem states
+
+Every command takes `-h` or `--help`. `-V` and `--version` work at the
+top level only, as `missouri --version`; a subcommand refuses them.
+
+Usage: missouri [OPTIONS] <COMMAND>
+
+Commands:
+  run       Run all test paths
+  list      List states, transitions, or test paths
+  validate  Validate missouri.yml files without running
+  init      Initialize a new missouri project
+  state     Manage states
+  report    Generate a report from recorded runs
+  serve     Serve an HTML report locally (not implemented yet)
+  docs      Browse bundled documentation
+  docgen    Generate documentation from test suites
+  agent     Agent evaluation commands
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
 ```
 
 ## Documentation

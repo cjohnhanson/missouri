@@ -1,0 +1,18 @@
+Record a passing verdict (called by the agent)
+
+Record a passing verdict. The evaluation agent calls this command during an eval. Do not call it
+directly.
+
+Usage: missouri agent pass [OPTIONS]
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+  -h, --help
+          Print help (see a summary with '-h')
