@@ -25,9 +25,9 @@ pub struct Args {
     #[arg(short = 'C', global = true)]
     pub directory: Option<Utf8PathBuf>,
 
-    // Handler: graph::StateGraph::discover and every command in
-    // run_command read it. clap prints the default after the text, so
-    // the text does not repeat it.
+    // Handler: run_command passes it to graph::StateGraph::discover,
+    // scaffold, and recorder::find_run_dir. clap prints the default
+    // after the text, so the text does not repeat it.
     /// Name of the config directory
     #[arg(long, global = true, default_value = ".missouri")]
     pub config_dir: String,
@@ -167,12 +167,16 @@ pub struct RunArgs {
     pub dir: Utf8PathBuf,
 
     // Handler: run_command, Command::Run, passes `verbose > 0` to
-    // report::print_results, which prints steps and passing assertion
-    // names for a passing path. No count above one changes anything.
-    /// Show steps and passing assertions for passing paths
+    // report::print_results (steps and passing assertion names for a
+    // passing path) and report::print_setup_results (the first 5 stdout
+    // lines of a passing setup command). No count above one changes
+    // anything.
+    /// Show passing steps, assertion names and setup stdout
     ///
-    /// Show each step and the name of each passing assertion for passing paths.
-    /// Repeating the flag adds no output.
+    /// Show each step and each passing assertion's name for passing paths. For passing commands in
+    /// the project config's `setup:` list, indent the first 5 stdout lines under `✓ setup: <name>`.
+    /// The flag adds no transition or assertion stdout or stderr. Failing paths and failing setup
+    /// commands print details with or without `-v`. `-vv` adds nothing.
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 

@@ -24,6 +24,8 @@ missouri [..]
 
 ```
 
+In this output, `[..]` stands for the version number.
+
 ## Initialize a project
 
 Create a directory for the project and change into it:

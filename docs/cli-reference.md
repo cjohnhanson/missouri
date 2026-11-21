@@ -55,9 +55,9 @@ Root directory containing states
 
 #### `-v --verbose`
 
-Show steps and passing assertions for passing paths
+Show passing steps, assertion names and setup stdout
 
-Show each step and the name of each passing assertion for passing paths. Repeating the flag adds no output.
+Show each step and each passing assertion's name for passing paths. For passing commands in the project config's `setup:` list, indent the first 5 stdout lines under `✓ setup: <name>`. The flag adds no transition or assertion stdout or stderr. Failing paths and failing setup commands print details with or without `-v`. `-vv` adds nothing.
 
 **Default:** `0`
 

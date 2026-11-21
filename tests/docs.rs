@@ -602,10 +602,19 @@ fn the_missouri_wrapper_removes_colour_codes() {
     let project = scratch.join("project");
     std::fs::create_dir_all(&project).unwrap();
     let run = |cmd: &Path, args: &[&str]| {
+        // No inherited variable reaches either run: HOME and TMPDIR are
+        // the scratch directory's, and PATH only finds the wrapper's tools.
         Command::new(cmd)
             .args(args)
             .current_dir(&project)
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", &scratch)
             .env("TMPDIR", &scratch)
+            .env("XDG_CONFIG_HOME", scratch.join(".config"))
+            .env("XDG_STATE_HOME", scratch.join(".local/state"))
+            .env("XDG_DATA_HOME", scratch.join(".local/share"))
+            .env("XDG_CACHE_HOME", scratch.join(".cache"))
             .output()
             .unwrap()
     };
@@ -805,6 +814,17 @@ fn a_console_block_ends_at_its_own_backticks() {
     let page = "````console\n$ first\n```\n$ second\n````\n";
     let names: Vec<String> = commands(Path::new("p.md"), page).into_iter().collect();
     assert_eq!(names, ["first", "second"]);
+}
+
+/// A file fence shown inside a longer fence, as an example of the
+/// syntax, is not a file the reader writes: the outer fence closes only
+/// at its own backticks.
+#[test]
+fn a_file_fence_inside_a_longer_fence_writes_nothing() {
+    let page = "````markdown\n```\n```text {filename=\"a.txt\"}\nx\n```\n````\n";
+    let segments = segments(Path::new("p.md"), page);
+    assert_eq!(segments.len(), 1);
+    assert!(segments[0].file.is_none());
 }
 
 #[test]

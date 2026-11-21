@@ -13,7 +13,7 @@ updated: 2026-11-21T00:00:00Z
 
 ## Problem
 
-`src/report.rs` unconditionally prints ANSI colour codes around `✓`, `✗`, `PASS` and `FAIL`. It uses `ESC[32m` for green and `ESC[31m` for red, even with `NO_COLOR=1` or when stdout or stderr is a pipe or file. The [NO_COLOR convention](https://no-color.org) asks programs to omit colour when `NO_COLOR` is set and non-empty. Error reports from miette use a separate output path.
+`src/report.rs` unconditionally prints ANSI colour codes around `✓`, `✗`, `PASS` and `FAIL`. It uses `ESC[32m` for green and `ESC[31m` for red, even with `NO_COLOR=1`. It also prints these codes when stdout or stderr is a pipe or file. The [NO_COLOR convention](https://no-color.org) asks programs to omit colour when `NO_COLOR` is set and non-empty. Error reports from miette, such as those from a repeated `init`, also print colour codes with `NO_COLOR=1`. This issue covers those reports too. The docs test strips every ANSI colour code, including codes in those reports.
 
 ## Change
 

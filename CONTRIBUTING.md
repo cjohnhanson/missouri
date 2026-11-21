@@ -18,6 +18,8 @@ cargo test --workspace --all-features
 
 Some tests need other programs on `PATH`: `node` for the npm wrapper,
 and `nix` for the illinois scenarios, which skip without it.
+The docs test needs a POSIX shell and these tools on `PATH`: `sh`,
+`env`, `sed`, `mktemp`, `cat`, `printenv` and `pwd`.
 
 ## Before a large change
 
@@ -131,16 +133,19 @@ and diataxis. They read `README.md` and `docs/` and fail when:
   `docs`.
 - A command for any of those tools appears outside a `console` block,
   except under Install.
+- A `console` block does not start with a `$ ` line.
 - A fence has no language or uses the `trycmd` language.
-- The README does not open with `# missouri`, or has no paragraph before
-  its first section.
+- The README's first heading is not a level-1 heading that names
+  `missouri` as a word.
+- The README has a second level-1 heading or no paragraph before its
+  first section.
 - The README has no `## Install` section or does not end with
   `## License`.
 - A link to a file or heading in the repository is broken.
-- typos finds a misspelling.
+- `typos` finds a misspelling.
 
-Pushes to `main` also check web links. They skip the hosts in
-`.lycheeignore`, which refuse automated requests.
+Web-link checks skip the hosts in `.lycheeignore`, which refuse
+automated requests.
 
 The scripts and their rules live under `scripts/family/` in the diataxis
 repository. Each script prints its rules with `--help`.

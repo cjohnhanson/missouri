@@ -677,10 +677,49 @@ then saves the captured flow file.
 
 ## Running tests
 
-The example suite in `tests/missouri` writes `greeting.txt` from `state-a`
-to `state-b` and checks it with the `greeting says hello` assertion.
-Each `[..]` in the output stands for a duration, which differs on every
-run.
+The commands below run against a small example suite in
+`tests/missouri`. First, create the suite and its two states:
+
+```console
+$ missouri init -d tests/missouri
+initialized missouri project at [CWD]/tests/missouri/.missouri
+
+$ missouri state add state-a -d tests/missouri
+created state "state-a"
+
+$ missouri state add state-b -d tests/missouri
+created state "state-b"
+
+```
+
+Save the `write greeting` transition in
+`tests/missouri/state-a/.missouri/missouri.yml`:
+
+```yaml {filename="tests/missouri/state-a/.missouri/missouri.yml"}
+transitions:
+  - name: "write greeting"
+    command: "echo hello > greeting.txt"
+    target: ../state-b
+```
+
+Save the `greeting says hello` assertion in
+`tests/missouri/state-b/.missouri/missouri.yml`:
+
+```yaml {filename="tests/missouri/state-b/.missouri/missouri.yml"}
+assertions:
+  - name: "greeting says hello"
+    command: "grep -q hello greeting.txt"
+```
+
+Save the expected file for `state-b` as
+`tests/missouri/state-b/greeting.txt`:
+
+```text {filename="tests/missouri/state-b/greeting.txt"}
+hello
+```
+
+Run the suite with `missouri run -d tests/missouri`. Each `[..]` in the
+output stands for a duration, which differs on every run.
 
 ```console
 $ missouri run -d tests/missouri
@@ -691,8 +730,8 @@ PASS state-a → state-b [..]
 
 ```
 
-Use `-v` to show each step and the name of each passing assertion for
-passing paths:
+Use `-v` to show each step and each passing assertion's name for this
+passing path:
 
 ```console
 $ missouri run -d tests/missouri -v
@@ -729,11 +768,13 @@ PASS state-a → state-b [..]
 
 ```
 
-With `--record`, `tests/missouri/.missouri/runs/<run-id>/` holds each
-transition's output as an asciicast (`.cast`) file, plus `results.json`.
-`--run-id` names the directory; without it, the name is a timestamp.
-`missouri report` selects the run whose directory name sorts last, which
-is the newest run with default timestamp IDs.
+`--record` writes `results.json` under
+`tests/missouri/.missouri/runs/<run-id>/`, plus path directories
+(`path-0/`, `path-1/`, ...) with each step's transition output in
+asciicast files (`step-0.cast`, ...). `--run-id` names the directory;
+without it, the name is a timestamp. `missouri report` selects the run
+whose directory name sorts last, which is the newest run with default
+timestamp IDs.
 
 ```console
 $ missouri run -d tests/missouri --record --run-id first
@@ -764,14 +805,16 @@ Run the transitions, read the diff, then update the expected state.
 ### Debugging failures
 
 With `-v`, missouri adds each step and each passing assertion's name for
-passing paths, without command stdout or stderr; `-vv` adds nothing.
-Failing paths print details with or without `-v`.
-A non-zero command exit prints `command failed: exit code N` and the
-first 10 lines of stderr.
-Missouri reports transition stdout and stderr mismatches, and each
-differing, missing or unexpected file with expected and actual content.
-Each failed assertion prints its error or its expected and actual stdout
-and stderr.
+passing paths. For passing commands in the project config's `setup:`
+list, it indents the first 5 stdout lines under `✓ setup: <name>`.
+The flag adds no transition or assertion stdout or stderr. `-vv` adds
+nothing. Failing paths and failing setup commands print details with
+or without `-v`. A non-zero command exit prints
+`command failed: exit code N` and the first 10 lines of stderr.
+Missouri reports transition stdout and stderr mismatches. It lists
+each differing, missing or unexpected file with expected and actual
+content. Each failed assertion prints its error or its expected and
+actual stdout and stderr.
 
 Missouri accepts `--keep-temp`, but this version still removes each temp
 directory after the run and prints no path.
