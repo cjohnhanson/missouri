@@ -1,0 +1,34 @@
+Generate documentation from test suites
+
+Render one test path as a document. The output interleaves the state prose from each `doc:` field,
+the file tree of each state, the transition command, and the expected stdout.
+
+Usage: missouri docgen [OPTIONS]
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+  -d, --dir <DIR>
+          Root directory containing states
+          
+          [default: .]
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+      --format <FORMAT>
+          Output format
+          
+          [default: markdown]
+          [possible values: markdown, json]
+
+      --path <PATH>
+          Path index to render (1-based, default: 1)
+          
+          [default: 1]
+
+  -h, --help
+          Print help (see a summary with '-h')

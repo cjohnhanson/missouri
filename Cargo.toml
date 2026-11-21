@@ -115,6 +115,11 @@ predicates = "3"
 # fails when the committed page differs. A test-only dependency: the
 # shipped crate and its consumers never compile it.
 usage-lib = { version = "7", default-features = false, features = ["clap", "markdown"] }
+# tests/docs.rs runs every `console` block in README.md and docs/ against
+# the built binary (trycmd), and compares each command's `--help` with a
+# snapshot (snapbox). Test-only, like usage-lib.
+trycmd = "1.2"
+snapbox = "1.2"
 
 [[test]]
 name = "cli_reference"

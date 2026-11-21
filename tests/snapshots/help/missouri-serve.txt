@@ -1,0 +1,35 @@
+Serve an HTML report locally (not implemented yet)
+
+Not implemented yet. The command checks that a recorded run exists, prints a message on stderr,
+and exits 1. To read a report, run `missouri report --format html` and open the file it writes.
+
+Usage: missouri serve [OPTIONS]
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+  -d, --dir <DIR>
+          Root directory containing states
+          
+          [default: .]
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+      --run <RUN>
+          Run ID to check for (default: last name in sorted order)
+          
+          Check only that the run exists, defaulting to the directory under `<config_dir>/runs/`
+          whose name sorts last. Default timestamp IDs (`YYYY-MM-DDTHH-MM-SS`) put the newest run
+          last; a custom ID such as `zz` sorts after timestamps.
+
+      --port <PORT>
+          Accepted and unused until serve exists
+          
+          [default: 8080]
+
+  -h, --help
+          Print help (see a summary with '-h')

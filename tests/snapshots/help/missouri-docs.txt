@@ -1,0 +1,30 @@
+Browse bundled documentation
+
+Print a page of this documentation. Missouri compiles the pages into the binary, so the command
+works from any directory.
+
+Omit `[TOPIC]` to list the topics.
+
+Usage: missouri docs [OPTIONS] [TOPIC] [QUERY]
+
+Arguments:
+  [TOPIC]
+          Topic slug to show, or "search" to search the docs
+
+  [QUERY]
+          Search query (when topic is "search")
+
+Options:
+  -a, --all
+          Print every page whole, in one stream
+
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+  -h, --help
+          Print help (see a summary with '-h')

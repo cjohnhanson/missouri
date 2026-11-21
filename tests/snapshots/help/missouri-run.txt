@@ -1,0 +1,66 @@
+Run all test paths
+
+Run all test paths discovered in the state graph.
+
+Exit codes: `0` every path passed. `1` one path or more failed. `2` configuration error. `130`
+interrupted.
+
+Usage: missouri run [OPTIONS]
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+  -d, --dir <DIR>
+          Root directory containing states
+          
+          [default: .]
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+  -v, --verbose...
+          Show steps and passing assertions for passing paths
+          
+          Show each step and the name of each passing assertion for passing paths. Repeating the
+          flag adds no output.
+
+  -q, --quiet
+          Accepted but has no effect
+          
+          The run prints the same output with or without `--quiet` (`-q`).
+
+      --keep-temp
+          Accepted but does not keep temp directories
+          
+          This version removes each temp directory after the run and prints no path, even with
+          `--keep-temp`.
+
+      --check-only
+          Run only state assertions (skip transitions and filesystem comparison)
+          
+          Run the state assertions only. Skip the transitions and the filesystem comparison.
+          Conflicts with `--no-check` and `--record`.
+
+      --no-check
+          Skip all assertions (run only transitions and filesystem comparison)
+          
+          Skip all assertions. Run the transitions and the filesystem comparison only. Conflicts
+          with `--check-only`.
+
+      --record
+          Record transition output to asciicast files
+          
+          Record the transition output to asciicast (`.cast`) files. Conflicts with
+          `--check-only`.
+
+      --run-id <RUN_ID>
+          Custom run ID for recording output directory (default: timestamp)
+          
+          Set a custom run ID for the recording output directory. Default: a timestamp
+          (`YYYY-MM-DDTHH-MM-SS`). Requires `--record`.
+
+  -h, --help
+          Print help (see a summary with '-h')

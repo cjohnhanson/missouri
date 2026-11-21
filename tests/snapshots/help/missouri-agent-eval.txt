@@ -1,0 +1,31 @@
+Run an agent evaluation
+
+Run an agent evaluation. This command reads `<config_dir>/<name>.md`. It parses the YAML
+frontmatter as the agent configuration. It then starts a Claude agent and passes the markdown body
+as the evaluation prompt. The agent returns a verdict. To do so, it calls `missouri agent pass` or
+`missouri agent fail <details>`.
+
+Exit codes: `0` pass, `1` fail or no verdict.
+
+Usage: missouri agent eval [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>
+          Eval name (matches `<config_dir>/<name>.md`)
+
+Options:
+  -C <DIRECTORY>
+          Change to this directory before doing anything
+
+  -d, --dir <DIR>
+          Root directory containing the state
+          
+          [default: .]
+
+      --config-dir <CONFIG_DIR>
+          Name of the config directory
+          
+          [default: .missouri]
+
+  -h, --help
+          Print help (see a summary with '-h')

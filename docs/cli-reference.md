@@ -21,7 +21,7 @@ Change to this directory before doing anything
 
 ### `--config-dir <CONFIG_DIR>`
 
-Name of the config directory (default: .missouri)
+Name of the config directory
 
 **Default:** `.missouri`
 
@@ -55,21 +55,25 @@ Root directory containing states
 
 #### `-v --verbose`
 
-Increase verbosity (-v, -vv, -vvv)
+Show steps and passing assertions for passing paths
 
-Stackable: `-v`, `-vv`, `-vvv`.
+Show each step and the name of each passing assertion for passing paths. Repeating the flag adds no output.
 
 **Default:** `0`
 
 #### `-q --quiet`
 
-Suppress non-essential output
+Accepted but has no effect
+
+The run prints the same output with or without `--quiet` (`-q`).
 
 **Default:** `false`
 
 #### `--keep-temp`
 
-Keep temp directories after run (for debugging)
+Accepted but does not keep temp directories
+
+This version removes each temp directory after the run and prints no path, even with `--keep-temp`.
 
 **Default:** `false`
 
@@ -182,7 +186,9 @@ Print help (see a summary with '-h')
 
 Initialize a new missouri project
 
-This command creates the config directory structure.
+Create `<config_dir>/` (default `.missouri/`) with `missouri.yml` containing `{}`, an empty `bin/` directory, and an `ignore` file containing one comment line.
+
+Print `initialized missouri project at <path>` on success. If `<config_dir>/` already exists, exit with status 2 and report `project already initialized at <path>`.
 
 ### Flags
 
@@ -270,7 +276,9 @@ Report format
 
 #### `--run <RUN>`
 
-Specific run ID to report on (default: latest)
+Run ID to report on (default: last name in sorted order)
+
+By default, select the run directory under `<config_dir>/runs/` whose name sorts last. Default timestamp IDs (`YYYY-MM-DDTHH-MM-SS`) put the newest run last; a custom ID such as `zz` sorts after timestamps.
 
 #### `-h --help`
 
@@ -294,9 +302,9 @@ Root directory containing states
 
 #### `--run <RUN>`
 
-Specific run ID to serve (default: latest)
+Run ID to check for (default: last name in sorted order)
 
-The run to check for. Default: latest.
+Check only that the run exists, defaulting to the directory under `<config_dir>/runs/` whose name sorts last. Default timestamp IDs (`YYYY-MM-DDTHH-MM-SS`) put the newest run last; a custom ID such as `zz` sorts after timestamps.
 
 #### `--port <PORT>`
 

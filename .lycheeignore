@@ -1,0 +1,3 @@
+# npmjs.com answers automated requests with 403, so the link check on
+# main cannot read it. The package pages exist.
+^https://www\.npmjs\.com/
